@@ -245,6 +245,11 @@
       <button class="btn primary" id="layout-render-btn" disabled>Render layout as video</button>
     </div>
 
+    <div class="dock" id="layout-dock" style="margin-bottom:14px">
+      <div class="big">Drop banner <code>.html</code> or <code>.zip</code> files here</div>
+      <div class="sub">or use <span class="pick">+ Add banners</span> above &nbsp;·&nbsp; ZIP packages supported</div>
+    </div>
+
     <div class="layout-body">
       <div class="layout-sidebar">
         <h3>Banners (<span id="layout-count">0</span>)</h3>
@@ -313,24 +318,95 @@ function uniqueName(base,seen){
   let n=2; while(seen.has(base+'_'+n)) n++;
   seen.add(base+'_'+n); return base+'_'+n;
 }
+
+/* ── ASSET INLINING & ENABLER STUB ──────────────────────── */
+const MIME_MAP={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gif',
+  webp:'image/webp',svg:'image/svg+xml',ico:'image/x-icon',bmp:'image/bmp',
+  woff:'font/woff',woff2:'font/woff2',ttf:'font/ttf',otf:'font/otf',
+  eot:'application/vnd.ms-fontobject',mp4:'video/mp4',webm:'video/webm',
+  mp3:'audio/mpeg',ogg:'audio/ogg',wav:'audio/wav',json:'application/json'};
+
+function inlineAssets(html, assets){
+  for(const [name,dataUrl] of assets){
+    // Cover src=, href=, url(), and data-src= in all quote styles
+    html=html.split(`src="${name}"`).join(`src="${dataUrl}"`);
+    html=html.split(`src='${name}'`).join(`src="${dataUrl}"`);
+    html=html.split(`href="${name}"`).join(`href="${dataUrl}"`);
+    html=html.split(`href='${name}'`).join(`href="${dataUrl}"`);
+    html=html.split(`url(${name})`).join(`url(${dataUrl})`);
+    html=html.split(`url("${name}")`).join(`url("${dataUrl}")`);
+    html=html.split(`url('${name}')`).join(`url('${dataUrl}')`);
+    html=html.split(`data-src="${name}"`).join(`data-src="${dataUrl}"`);
+  }
+  return html;
+}
+
+// Stub for Google/DoubleClick Enabler — fires INIT immediately so GWD ads animate
+const ENABLER_STUB=`<script>
+(function(){
+  var h={};
+  var SE={INIT:'init',VISIBLE:'visible',PAGE_LOADED:'pageloaded',
+    EXPAND_START:'expandStart',COLLAPSE_START:'collapseStart',
+    FULLSCREEN_EXPAND_START:'fullscreenExpandStart',
+    FULLSCREEN_COLLAPSE_START:'fullscreenCollapseStart'};
+  window.studio={events:{StudioEvent:SE}};
+  window.Enabler={
+    setProfileId:function(){},setSimulation:function(){},
+    addEventListener:function(ev,fn){(h[ev]=h[ev]||[]).push(fn);
+      if(ev===SE.INIT||ev==='init')setTimeout(fn,50);},
+    removeEventListener:function(){},
+    isInitialized:function(){return true;},initialized:true,
+    exit:function(){},exitOverride:function(){},
+    counter:function(){},startTimer:function(){},stopTimer:function(){},
+    reportManualClose:function(){},getDuration:function(){return 0;},
+    dispatch:function(ev){(h[ev]||[]).forEach(function(fn){fn();});}
+  };
+})();
+<\/script>`;
+
+function injectEnablerStub(html){
+  // Replace DoubleClick/CM360 Enabler.js with our offline stub
+  return html.replace(
+    /<script[^>]*src=["'][^"']*s0\.2mdn\.net\/ads\/studio\/Enabler\.js["'][^>]*>\s*<\/script>/gi,
+    ENABLER_STUB
+  );
+}
+
 async function extractBanners(files){
   const out=[], seen=new Set();
   for(const f of files){
     if(/\.zip$/i.test(f.name)){
       try{
         const zip=await JSZip.loadAsync(f);
-        const entries=Object.entries(zip.files)
+        const allEntries=Object.entries(zip.files);
+
+        // First pass: collect non-HTML assets as base64 data URLs
+        const assets=new Map();
+        for(const [path,entry] of allEntries){
+          if(entry.dir||/\.html?$/i.test(path)) continue;
+          const fname=path.split('/').pop();
+          const ext=(fname.split('.').pop()||'').toLowerCase();
+          const mime=MIME_MAP[ext]||'application/octet-stream';
+          const b64=await entry.async('base64');
+          assets.set(fname,`data:${mime};base64,${b64}`);
+        }
+
+        // Second pass: process HTML files with assets inlined
+        const htmlEntries=allEntries
           .filter(([p,e])=>!e.dir&&/\.html?$/i.test(p))
           .sort(([a],[b])=>a.localeCompare(b));
-        for(const [path,entry] of entries){
-          const text=await entry.async('text');
-          out.push({text, name:bannerNameFromZipPath(path,seen)});
+        for(const [path,entry] of htmlEntries){
+          let text=await entry.async('text');
+          text=inlineAssets(text,assets);
+          text=injectEnablerStub(text);
+          out.push({text,name:bannerNameFromZipPath(path,seen)});
         }
       }catch(e){ console.error('ZIP error:',e); }
     }else if(/\.html?$/i.test(f.name)){
-      const text=await f.text();
+      let text=await f.text();
+      text=injectEnablerStub(text);
       const base=/^index\.html?$/i.test(f.name)?'banner':f.name.replace(/\.html?$/i,'');
-      out.push({text, name:uniqueName(base,seen)});
+      out.push({text,name:uniqueName(base,seen)});
     }
   }
   return out;
@@ -466,7 +542,9 @@ async function captureAd(text,w,h,opts,setProg,status){
     await new Promise(res=>{ if(doc.readyState==='complete') setTimeout(res,0); else iframe.onload=()=>setTimeout(res,0); });
     if(doc.fonts?.ready) await doc.fonts.ready;
     await raf();
-    await new Promise(r=>setTimeout(r,200)); // let JS animation libs finish setup
+    // GWD/Enabler ads need ~1s for Web Components to register and Enabler INIT to fire
+    const isGWD=text.includes('gwd-pagedeck')||text.includes('gwdAd')||text.includes('studio.events');
+    await new Promise(r=>setTimeout(r,isGWD?1200:300));
 
     const win=iframe.contentWindow;
     const frameMs=1000/opts.fps;
@@ -594,6 +672,19 @@ function bakeNode(win,liveEl,cloneEl){
   let add=';animation:none!important;-webkit-animation:none!important;';
   add+='opacity:'+cs.opacity+';';
   if(cs.transform&&cs.transform!=='none') add+='transform:'+cs.transform+';';
+  // Mask properties — GWD shimmer/wipe effects animate -webkit-mask-position
+  const mp=cs.getPropertyValue('-webkit-mask-position')||cs.getPropertyValue('mask-position');
+  if(mp) add+='-webkit-mask-position:'+mp+';mask-position:'+mp+';';
+  const mi=cs.getPropertyValue('-webkit-mask-image')||cs.getPropertyValue('mask-image');
+  if(mi&&mi!=='none') add+='-webkit-mask-image:'+mi+';mask-image:'+mi+';';
+  const ms=cs.getPropertyValue('-webkit-mask-size')||cs.getPropertyValue('mask-size');
+  if(ms) add+='-webkit-mask-size:'+ms+';mask-size:'+ms+';';
+  // Clip-path (reveal/wipe transitions)
+  const cp=cs.getPropertyValue('clip-path');
+  if(cp&&cp!=='none') add+='clip-path:'+cp+';';
+  // Filter (blur/brightness fade-ins)
+  const fl=cs.getPropertyValue('filter');
+  if(fl&&fl!=='none') add+='filter:'+fl+';';
   cloneEl.setAttribute('style',(cloneEl.getAttribute('style')||'')+add);
 }
 
@@ -939,6 +1030,8 @@ function updateLayoutSidebar(){
   const list=document.getElementById('layout-list');
   const countEl=document.getElementById('layout-count');
   countEl.textContent=layout.items.length;
+  // Hide dock once banners are loaded; show when empty
+  document.getElementById('layout-dock').classList.toggle('hidden',layout.items.length>0);
   list.innerHTML='';
   layout.items.forEach((it,i)=>{
     const row=document.createElement('div');
@@ -964,10 +1057,8 @@ function updateLayoutSidebar(){
   document.getElementById('layout-render-btn').disabled=!layout.items.length;
 }
 
-// Layout file upload
-$('#layout-upload-btn').addEventListener('click',()=>$('#layout-file').click());
-$('#layout-file').addEventListener('change',async e=>{
-  const files=[...e.target.files];
+// Layout file intake — shared handler for button, file input, and drag-drop
+async function handleLayoutFiles(files){
   if(!files.length) return;
   initLayoutCanvas();
   const progress=document.getElementById('layout-progress');
@@ -995,8 +1086,20 @@ $('#layout-file').addEventListener('change',async e=>{
   }
   progress.textContent='';
   progress.style.display='none';
+}
+
+$('#layout-upload-btn').addEventListener('click',()=>$('#layout-file').click());
+$('#layout-file').addEventListener('change',async e=>{
+  await handleLayoutFiles([...e.target.files]);
   e.target.value='';
 });
+
+// Layout dock drag-drop
+const layoutDock=document.getElementById('layout-dock');
+layoutDock.addEventListener('click',()=>$('#layout-file').click());
+['dragenter','dragover'].forEach(ev=>layoutDock.addEventListener(ev,e=>{e.preventDefault();layoutDock.classList.add('drag');}));
+['dragleave','drop'].forEach(ev=>layoutDock.addEventListener(ev,e=>{e.preventDefault();layoutDock.classList.remove('drag');}));
+layoutDock.addEventListener('drop',e=>handleLayoutFiles([...e.dataTransfer.files]));
 
 $('#layout-clear-btn').addEventListener('click',()=>{
   layout.items=[]; layout.selected=-1;
