@@ -199,6 +199,12 @@
         <option value="webm">Video (.webm)</option>
       </select>
     </div>
+    <div class="ctl">
+      <label>Duration (s)</label>
+      <input type="number" id="dur" min="0" max="60" step="0.5" value="0"
+        style="width:60px;font-family:var(--mono);font-size:13px;background:var(--panel-2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 8px;text-align:center">
+      <span class="val" style="font-size:10px;color:var(--faint)">0 = auto</span>
+    </div>
     <label class="toggle"><input type="checkbox" id="dither">Dither</label>
   </div>
 
@@ -263,7 +269,7 @@
 
 /* ── CONTROLS ─────────────────────────────────────────────── */
 const $ = s => document.querySelector(s);
-const opts = { fps:24, colors:128, hold:1.5, scale:1, loop:0, dither:false, format:'gif' };
+const opts = { fps:24, colors:128, hold:1.5, scale:1, loop:0, dither:false, format:'gif', dur:0 };
 
 function bindRange(id, key){
   const el=$('#'+id), out=$('#'+id+'v');
@@ -274,6 +280,7 @@ bindRange('fps','fps'); bindRange('colors','colors'); bindRange('hold','hold');
 $('#scale').addEventListener('change',e=>opts.scale=parseInt(e.target.value));
 $('#loop').addEventListener('change',e=>opts.loop=parseInt(e.target.value));
 $('#dither').addEventListener('change',e=>opts.dither=e.target.checked);
+$('#dur').addEventListener('input',e=>opts.dur=parseFloat(e.target.value)||0);
 $('#format').addEventListener('change',e=>{
   opts.format=e.target.value;
   $('#zip').textContent = opts.format==='gif' ? 'Download all (.zip)' : 'Download all (.zip)';
@@ -418,29 +425,82 @@ async function captureAd(text,w,h,opts,setProg,status){
   try{
     const doc=iframe.contentDocument;
     doc.open(); doc.write(text); doc.close();
-    await new Promise(res=>{ if(doc.readyState==='complete') res(); else iframe.onload=res; });
+    // wait for load, then settle so JS timelines (GSAP, etc.) can initialize
+    await new Promise(res=>{ if(doc.readyState==='complete') setTimeout(res,0); else iframe.onload=()=>setTimeout(res,0); });
     if(doc.fonts?.ready) await doc.fonts.ready;
     await raf();
+    await new Promise(r=>setTimeout(r,200)); // let JS animation libs finish setup
 
     const win=iframe.contentWindow;
-    let totalMs=0;
+    const frameMs=1000/opts.fps;
+
+    // ── Duration detection ──────────────────────────────────
+    let totalMs = opts.dur>0 ? opts.dur*1000 : 0;
+
+    // 1) CSS / Web Animations API
     const anims=doc.getAnimations?doc.getAnimations():[];
     for(const a of anims){
       a.pause();
       try{ const e=a.effect.getComputedTiming().endTime; if(isFinite(e)&&e>totalMs) totalMs=e; }catch(_){}
     }
-    const frameMs=1000/opts.fps;
-    if(!totalMs||totalMs<frameMs) totalMs=frameMs;
+
+    // 2) GSAP global timeline (covers GSAP 2 & 3, TweenMax, TweenLite)
+    if(!totalMs){
+      try{
+        const gsap=win.gsap||win.TweenMax||win.TweenLite;
+        const tl=gsap?.globalTimeline||gsap?.timeline?.();
+        const d=(tl?.totalDuration?.()||tl?.duration?.())*1000;
+        if(d>0) totalMs=d;
+      }catch(_){}
+    }
+
+    // 3) Common ad variables set by studios
+    if(!totalMs){
+      try{
+        const d=win.animDuration||win.adDuration||win.duration||
+                win.Enabler?.getDuration?.();
+        if(d>0) totalMs=d*1000;
+      }catch(_){}
+    }
+
+    // 4) data-duration attribute on #ad or body
+    if(!totalMs){
+      const el=doc.getElementById('ad')||doc.body;
+      const d=parseFloat(el?.dataset?.duration);
+      if(d>0) totalMs=d*1000;
+    }
+
+    // 5) Fallback — scan inline styles for longest animation-duration
+    if(!totalMs){
+      const allEls=doc.querySelectorAll('*');
+      for(const el of allEls){
+        const cs=win.getComputedStyle(el);
+        const dur=cs.animationDuration||'';
+        const delay=cs.animationDelay||'';
+        const toMs=s=>s.split(',').reduce((mx,v)=>{const n=parseFloat(v)*(v.trim().endsWith('ms')?1:1000);return Math.max(mx,isFinite(n)?n:0);},0);
+        const t=toMs(dur)+toMs(delay);
+        if(t>totalMs) totalMs=t;
+      }
+    }
+
+    // 6) Hard fallback
+    if(!totalMs||totalMs<frameMs) totalMs=15000;
 
     const host=doc.getElementById('ad')||doc.body;
     const styleText=[...doc.querySelectorAll('style')].map(s=>s.textContent).join('\n');
     const times=[]; for(let t=0;t<totalMs-0.001;t+=frameMs) times.push(t); times.push(totalMs);
 
     const frames=[];
+    let staticRun=0;
+    const staticExit=Math.max(4,opts.fps); // bail after 1s of identical frames
     for(let i=0;i<times.length;i++){
       for(const a of anims) a.currentTime=times[i];
       await raf();
-      frames.push(await snapshot(win,host,styleText,w,h,opts.scale));
+      const id=await snapshot(win,host,styleText,w,h,opts.scale);
+      if(frames.length>0&&sameFrame(id,frames[frames.length-1])){
+        if(++staticRun>=staticExit){ frames.push(id); break; }
+      } else { staticRun=0; }
+      frames.push(id);
       setProg(0.15+0.7*(i+1)/times.length);
       if(i%4===0) await tick();
     }
