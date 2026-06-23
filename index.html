@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Banner to GIF / Video</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root{
     --bg:#13161b; --panel:#1a1e25; --panel-2:#20252e; --line:#2b313b;
@@ -211,9 +212,9 @@
   <!-- ===================== SINGLE TAB ===================== -->
   <div id="tab-single">
     <div class="dock" id="dock">
-      <div class="big">Drop banner <code>.html</code> files here</div>
-      <div class="sub">or <span class="pick">browse</span> &nbsp;·&nbsp; self-contained ads with inline fonts &amp; images work best</div>
-      <input type="file" id="file" accept=".html,text/html" multiple class="hidden">
+      <div class="big">Drop banner <code>.html</code> or <code>.zip</code> files here</div>
+      <div class="sub">or <span class="pick">browse</span> &nbsp;·&nbsp; ZIP delivery packages work — <code>index.html</code> files are named by their folder</div>
+      <input type="file" id="file" accept=".html,text/html,.zip,application/zip" multiple class="hidden">
     </div>
 
     <div class="bar hidden" id="bar">
@@ -239,7 +240,7 @@
       <input type="color" id="lbg" value="#000000" style="width:36px;height:32px;border-radius:6px;border:1px solid var(--line);background:var(--panel-2);cursor:pointer;padding:2px">
       <div class="spacer"></div>
       <button class="btn" id="layout-upload-btn">+ Add banners</button>
-      <input type="file" id="layout-file" accept=".html,text/html" multiple class="hidden">
+      <input type="file" id="layout-file" accept=".html,text/html,.zip,application/zip" multiple class="hidden">
       <button class="btn" id="layout-clear-btn">Clear</button>
       <button class="btn primary" id="layout-render-btn" disabled>Render layout as video</button>
     </div>
@@ -298,6 +299,43 @@ $('#tab-layout-btn').addEventListener('click',()=>{
   initLayoutCanvas();
 });
 
+/* ── ZIP EXTRACTION ──────────────────────────────────────── */
+function bannerNameFromZipPath(zipPath, seen){
+  const parts=zipPath.split('/').filter(p=>p&&p!=='.');
+  if(!parts.length) return uniqueName('banner',seen);
+  const filename=parts[parts.length-1];
+  const isIndex=/^index\.html?$/i.test(filename);
+  const base=isIndex&&parts.length>=2 ? parts[parts.length-2] : filename.replace(/\.html?$/i,'');
+  return uniqueName(base,seen);
+}
+function uniqueName(base,seen){
+  if(!seen.has(base)){seen.add(base);return base;}
+  let n=2; while(seen.has(base+'_'+n)) n++;
+  seen.add(base+'_'+n); return base+'_'+n;
+}
+async function extractBanners(files){
+  const out=[], seen=new Set();
+  for(const f of files){
+    if(/\.zip$/i.test(f.name)){
+      try{
+        const zip=await JSZip.loadAsync(f);
+        const entries=Object.entries(zip.files)
+          .filter(([p,e])=>!e.dir&&/\.html?$/i.test(p))
+          .sort(([a],[b])=>a.localeCompare(b));
+        for(const [path,entry] of entries){
+          const text=await entry.async('text');
+          out.push({text, name:bannerNameFromZipPath(path,seen)});
+        }
+      }catch(e){ console.error('ZIP error:',e); }
+    }else if(/\.html?$/i.test(f.name)){
+      const text=await f.text();
+      const base=/^index\.html?$/i.test(f.name)?'banner':f.name.replace(/\.html?$/i,'');
+      out.push({text, name:uniqueName(base,seen)});
+    }
+  }
+  return out;
+}
+
 /* ── SINGLE MODE FILE INTAKE ─────────────────────────────── */
 const dock=$('#dock'), fileInput=$('#file'), sheet=$('#sheet');
 const results=[];
@@ -308,10 +346,10 @@ fileInput.addEventListener('change',e=>handleFiles([...e.target.files]));
 dock.addEventListener('drop',e=>handleFiles([...e.dataTransfer.files]));
 
 async function handleFiles(files){
-  files=files.filter(f=>/\.html?$/i.test(f.name));
-  if(!files.length) return;
+  const banners=await extractBanners(files);
+  if(!banners.length) return;
   $('#bar').classList.remove('hidden');
-  for(const f of files) await convertFile(f);
+  for(const b of banners) await convertBanner(b.text,b.name);
 }
 $('#clear').addEventListener('click',()=>{ sheet.innerHTML=''; results.length=0; updateBar(); });
 $('#zip').addEventListener('click',downloadZip);
@@ -331,10 +369,9 @@ function adSize(text,name){
   return [300,250];
 }
 
-async function convertFile(file){
-  const text=await file.text();
-  const [w,h]=adSize(text,file.name);
-  const base=file.name.replace(/\.html?$/i,'');
+async function convertBanner(text,name){
+  const [w,h]=adSize(text,name);
+  const base=name;
   const fmt=opts.format;
 
   const cell=document.createElement('div');
@@ -930,18 +967,21 @@ function updateLayoutSidebar(){
 // Layout file upload
 $('#layout-upload-btn').addEventListener('click',()=>$('#layout-file').click());
 $('#layout-file').addEventListener('change',async e=>{
-  const files=[...e.target.files].filter(f=>/\.html?$/i.test(f.name));
+  const files=[...e.target.files];
   if(!files.length) return;
   initLayoutCanvas();
   const progress=document.getElementById('layout-progress');
-  for(const f of files){
-    progress.style.display='block';
-    progress.textContent=`Capturing: ${f.name}…`;
+  progress.style.display='block';
+  progress.textContent='Extracting files…';
+  let banners;
+  try{ banners=await extractBanners(files); }catch(err){ progress.textContent='Extract failed: '+(err.message||err); return; }
+  if(!banners.length){ progress.style.display='none'; return; }
+  for(const {text,name} of banners){
+    progress.textContent=`Capturing: ${name}…`;
     try{
-      const text=await f.text();
-      const [w,h]=adSize(text,f.name);
+      const [w,h]=adSize(text,name);
       await ensureFonts(text);
-      const item={name:f.name.replace(/\.html?$/i,''), w, h, x:0, y:0, frames:[], delays:[], _canvases:[]};
+      const item={name, w, h, x:0, y:0, frames:[], delays:[], _canvases:[]};
       autoPosition(item);
       const {frames,delays}=await captureAd(text,w,h,opts,()=>{},null);
       item.frames=frames; item.delays=delays;
@@ -949,7 +989,7 @@ $('#layout-file').addEventListener('change',async e=>{
       updateLayoutSidebar();
     }catch(err){
       console.error('Layout capture failed:',err);
-      progress.textContent=`Failed: ${f.name} — ${err.message||err}`;
+      progress.textContent=`Failed: ${name} — ${err.message||err}`;
       await new Promise(r=>setTimeout(r,1500));
     }
   }
@@ -1043,7 +1083,7 @@ const raf=()=>new Promise(r=>requestAnimationFrame(()=>r()));
 const tick=()=>new Promise(r=>setTimeout(r,0));
 
 /* expose for headless testing */
-window.__convertText=async(text,name)=>{ const f=new File([text],name,{type:'text/html'}); $('#bar').classList.remove('hidden'); await convertFile(f); return results[results.length-1]; };
+window.__convertText=async(text,name)=>{ $('#bar').classList.remove('hidden'); await convertBanner(text,name); return results[results.length-1]; };
 </script>
 </body>
 </html>
