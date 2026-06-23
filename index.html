@@ -197,7 +197,8 @@
       <label>Output format</label>
       <select id="format" class="format-sel">
         <option value="gif" selected>GIF (.gif)</option>
-        <option value="webm">Video (.webm)</option>
+        <option value="mp4">MP4 (.mp4)</option>
+        <option value="webm">WebM (.webm)</option>
       </select>
     </div>
     <div class="ctl">
@@ -468,7 +469,10 @@ async function convertBanner(text,name){
     await tick();
 
     let blob, ext, mimeType;
-    if(fmt==='webm'){
+    if(fmt==='mp4'){
+      blob=await encodeMp4(frames,w,h,delays,opts);
+      ext='.mp4'; mimeType='video/mp4';
+    } else if(fmt==='webm'){
       blob=await encodeWebM(frames,w,h,delays,opts);
       ext='.webm'; mimeType='video/webm';
     } else {
@@ -482,7 +486,7 @@ async function convertBanner(text,name){
     results.push({name:base+ext, blob});
     cell.classList.remove('work');
 
-    if(fmt==='webm'){
+    if(fmt==='mp4'||fmt==='webm'){
       const vid=document.createElement('video');
       vid.src=url; vid.autoplay=true; vid.loop=true; vid.muted=true; vid.playsInline=true;
       vid.style.cssText='max-width:100%;height:auto;display:block;border-radius:2px;box-shadow:0 6px 22px rgba(0,0,0,.45)';
@@ -492,8 +496,9 @@ async function convertBanner(text,name){
       cell.querySelector('.stage').innerHTML=`<img src="${url}" alt="${base}">`;
     }
 
+    const fmtLabel=fmt==='gif'?opts.colors+' col':fmt.toUpperCase();
     const meta=document.createElement('div'); meta.className='meta';
-    meta.innerHTML=`<div class="specs">${frames.length} frames · ${fmt==='gif'? opts.colors+' col': 'WebM'}<br><span class="kb">${kb} KB</span></div>`;
+    meta.innerHTML=`<div class="specs">${frames.length} frames · ${fmtLabel}<br><span class="kb">${kb} KB</span></div>`;
     const a=document.createElement('a'); a.className='dl'; a.href=url; a.download=base+ext; a.textContent='Download';
     meta.appendChild(a); cell.appendChild(meta);
     status.remove();
@@ -686,6 +691,48 @@ function bakeNode(win,liveEl,cloneEl){
   const fl=cs.getPropertyValue('filter');
   if(fl&&fl!=='none') add+='filter:'+fl+';';
   cloneEl.setAttribute('style',(cloneEl.getAttribute('style')||'')+add);
+}
+
+/* ── MP4 ENCODER (Web Codecs API + mp4-muxer) ───────────── */
+async function encodeMp4(frames,w,h,delays,opts){
+  if(!window.VideoEncoder) throw new Error('MP4 requires Chrome 94+ or Safari 16.4+. Switch to WebM or GIF.');
+
+  // Lazy-load mp4-muxer (ES module via CDN, cached after first use)
+  if(!window._mp4muxer){
+    window._mp4muxer=await import('https://cdn.jsdelivr.net/npm/mp4-muxer@5/build/mp4-muxer.min.js');
+  }
+  const {Muxer,ArrayBufferTarget}=window._mp4muxer;
+
+  // H.264 requires even dimensions
+  const mw=w%2?w+1:w, mh=h%2?h+1:h;
+
+  const target=new ArrayBufferTarget();
+  const muxer=new Muxer({target,video:{codec:'avc',width:mw,height:mh},fastStart:'in-memory'});
+
+  let encErr=null;
+  const encoder=new VideoEncoder({
+    output:(chunk,meta)=>muxer.addVideoChunk(chunk,meta),
+    error:e=>{ encErr=e; }
+  });
+  encoder.configure({codec:'avc1.42001f',width:mw,height:mh,bitrate:8_000_000});
+
+  const tmp=document.createElement('canvas'); tmp.width=mw; tmp.height=mh;
+  const tc=tmp.getContext('2d');
+  let tsUs=0;
+  for(let i=0;i<frames.length;i++){
+    if(encErr) throw encErr;
+    tc.putImageData(frames[i],0,0);
+    const vf=new VideoFrame(tmp,{timestamp:tsUs,duration:delays[i]*10*1000});
+    encoder.encode(vf,{keyFrame:i%30===0});
+    vf.close();
+    tsUs+=delays[i]*10*1000; // centiseconds → microseconds
+    if(encoder.encodeQueueSize>8) await new Promise(r=>setTimeout(r,0));
+  }
+  await encoder.flush();
+  encoder.close();
+  if(encErr) throw encErr;
+  muxer.finalize();
+  return new Blob([target.buffer],{type:'video/mp4'});
 }
 
 /* ── VIDEO ENCODER (WebM via MediaRecorder) ──────────────── */
@@ -1129,49 +1176,79 @@ async function renderLayout(){
       for(let i=0;i<item.frames.length;i++) getFrameCanvas(item,i);
     }
 
-    // Total duration = max of all banner durations
-    const maxDurationMs=Math.max(...layout.items.map(it=>
-      it.delays.reduce((a,d)=>a+d*10,0)
-    ));
+    const maxDurationMs=Math.max(...layout.items.map(it=>it.delays.reduce((a,d)=>a+d*10,0)));
     const frameMs=1000/opts.fps;
     const totalFrames=Math.ceil(maxDurationMs/frameMs)+Math.round(opts.hold*opts.fps);
 
-    const mimeType=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-      ? 'video/webm;codecs=vp9'
-      : 'video/webm';
-    const stream=masterCanvas.captureStream(0);
-    const track=stream.getVideoTracks()[0];
-    const recorder=new MediaRecorder(stream,{mimeType, videoBitsPerSecond:12_000_000});
-    const chunks=[];
+    let blob, ext;
 
-    await new Promise((resolve,reject)=>{
-      recorder.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
-      recorder.onstop=resolve;
-      recorder.onerror=e=>reject(e.error||new Error('Recorder error'));
-      recorder.start();
-
-      let frameIdx=0;
-      function nextFrame(){
-        if(frameIdx>=totalFrames){ recorder.stop(); return; }
-        const timeMs=frameIdx*frameMs;
-        ctx.fillStyle=layout.bg;
-        ctx.fillRect(0,0,layout.w,layout.h);
+    if(opts.format==='mp4'){
+      // ── MP4 path: stream frames directly into VideoEncoder (no frame buffering)
+      if(!window.VideoEncoder) throw new Error('MP4 requires Chrome 94+ or Safari 16.4+. Switch to WebM.');
+      if(!window._mp4muxer) window._mp4muxer=await import('https://cdn.jsdelivr.net/npm/mp4-muxer@5/build/mp4-muxer.min.js');
+      const {Muxer,ArrayBufferTarget}=window._mp4muxer;
+      const mw=layout.w%2?layout.w+1:layout.w, mh=layout.h%2?layout.h+1:layout.h;
+      const target=new ArrayBufferTarget();
+      const muxer=new Muxer({target,video:{codec:'avc',width:mw,height:mh},fastStart:'in-memory'});
+      let encErr=null;
+      const encoder=new VideoEncoder({
+        output:(chunk,meta)=>muxer.addVideoChunk(chunk,meta),
+        error:e=>{ encErr=e; }
+      });
+      encoder.configure({codec:'avc1.42001f',width:mw,height:mh,bitrate:12_000_000});
+      let tsUs=0;
+      for(let fi=0;fi<totalFrames;fi++){
+        if(encErr) throw encErr;
+        const timeMs=fi*frameMs;
+        ctx.fillStyle=layout.bg; ctx.fillRect(0,0,layout.w,layout.h);
         for(const item of layout.items){
-          const fi=getFrameAtTime(item,timeMs);
-          if(fi) ctx.drawImage(getFrameCanvas(item,fi.idx), item.x, item.y, item.w, item.h);
+          const f=getFrameAtTime(item,timeMs);
+          if(f) ctx.drawImage(getFrameCanvas(item,f.idx),item.x,item.y,item.w,item.h);
         }
-        if(track.requestFrame) track.requestFrame();
-        frameIdx++;
-        if(frameIdx%20===0) progress.textContent=`Encoding frame ${frameIdx}/${totalFrames}…`;
-        setTimeout(nextFrame, frameMs);
+        const vf=new VideoFrame(masterCanvas,{timestamp:tsUs,duration:frameMs*1000});
+        encoder.encode(vf,{keyFrame:fi%30===0}); vf.close();
+        tsUs+=frameMs*1000;
+        if(fi%20===0){ progress.textContent=`Encoding frame ${fi+1}/${totalFrames}…`; await tick(); }
+        if(encoder.encodeQueueSize>10) await new Promise(r=>setTimeout(r,0));
       }
-      nextFrame();
-    });
+      await encoder.flush(); encoder.close();
+      if(encErr) throw encErr;
+      muxer.finalize();
+      blob=new Blob([target.buffer],{type:'video/mp4'}); ext='.mp4';
+    } else {
+      // ── WebM path: MediaRecorder streaming
+      const mimeType=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/webm;codecs=vp9':'video/webm';
+      const stream=masterCanvas.captureStream(0);
+      const track=stream.getVideoTracks()[0];
+      const recorder=new MediaRecorder(stream,{mimeType,videoBitsPerSecond:12_000_000});
+      const chunks=[];
+      await new Promise((resolve,reject)=>{
+        recorder.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
+        recorder.onstop=resolve;
+        recorder.onerror=e=>reject(e.error||new Error('Recorder error'));
+        recorder.start();
+        let frameIdx=0;
+        function nextFrame(){
+          if(frameIdx>=totalFrames){ recorder.stop(); return; }
+          const timeMs=frameIdx*frameMs;
+          ctx.fillStyle=layout.bg; ctx.fillRect(0,0,layout.w,layout.h);
+          for(const item of layout.items){
+            const fi=getFrameAtTime(item,timeMs);
+            if(fi) ctx.drawImage(getFrameCanvas(item,fi.idx),item.x,item.y,item.w,item.h);
+          }
+          if(track.requestFrame) track.requestFrame();
+          frameIdx++;
+          if(frameIdx%20===0) progress.textContent=`Encoding frame ${frameIdx}/${totalFrames}…`;
+          setTimeout(nextFrame,frameMs);
+        }
+        nextFrame();
+      });
+      blob=new Blob(chunks,{type:'video/webm'}); ext='.webm';
+    }
 
-    const blob=new Blob(chunks,{type:'video/webm'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
-    a.href=url; a.download='layout-render.webm'; a.click();
+    a.href=url; a.download='layout-render'+ext; a.click();
     progress.textContent=`Done — ${(blob.size/1024/1024).toFixed(1)} MB`;
     setTimeout(()=>{ progress.textContent=''; progress.style.display='none'; },3000);
   }catch(err){
