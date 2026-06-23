@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Banner to GIF</title>
+<title>Banner to GIF / Video</title>
 <style>
   :root{
     --bg:#13161b; --panel:#1a1e25; --panel-2:#20252e; --line:#2b313b;
@@ -20,7 +20,7 @@
     background-image:radial-gradient(circle at 50% -10%, #1c2129 0%, var(--bg) 55%);
     min-height:100vh;
   }
-  .wrap{max-width:1080px; margin:0 auto; padding:40px 24px 80px}
+  .wrap{max-width:1200px; margin:0 auto; padding:40px 24px 80px}
 
   /* ---- masthead ---- */
   header{display:flex; align-items:flex-end; justify-content:space-between;
@@ -29,12 +29,20 @@
   h1{font-size:26px; font-weight:650; letter-spacing:-.02em; margin:0}
   .title .dot{width:9px; height:9px; border-radius:50%; background:var(--amber);
     box-shadow:0 0 12px var(--amber); transform:translateY(-3px)}
-  .tag{font-family:var(--mono); font-size:12px; color:var(--muted); max-width:420px}
+  .tag{font-family:var(--mono); font-size:12px; color:var(--muted); max-width:480px}
   .tag b{color:var(--ink); font-weight:500}
+
+  /* ---- tabs ---- */
+  .tabs{display:flex; gap:0; margin:20px 0 0; border-bottom:1px solid var(--line)}
+  .tab{font-family:var(--mono); font-size:12.5px; padding:8px 18px; background:none;
+    border:none; border-bottom:2px solid transparent; color:var(--muted); cursor:pointer;
+    margin-bottom:-1px; transition:color .15s, border-color .15s}
+  .tab:hover{color:var(--ink)}
+  .tab.active{color:var(--amber); border-bottom-color:var(--amber)}
 
   /* ---- controls ---- */
   .controls{display:flex; flex-wrap:wrap; gap:18px 26px; align-items:flex-end;
-    margin:26px 0 22px; padding:18px 20px; background:var(--panel);
+    margin:18px 0 16px; padding:18px 20px; background:var(--panel);
     border:1px solid var(--line); border-radius:10px}
   .ctl{display:flex; flex-direction:column; gap:6px}
   .ctl label{font-family:var(--mono); font-size:10.5px; letter-spacing:.08em;
@@ -43,12 +51,13 @@
   input[type=range]{width:130px; accent-color:var(--amber); cursor:pointer}
   select,.toggle{font-family:var(--mono); font-size:13px; background:var(--panel-2);
     color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:6px 9px}
+  select.format-sel{border-color:var(--amber-dim); color:var(--amber)}
   .toggle{cursor:pointer; user-select:none; display:flex; align-items:center; gap:8px}
   .toggle input{accent-color:var(--amber)}
   .spacer{flex:1}
 
   /* ---- drop dock ---- */
-  .dock{margin-top:4px; border:1.5px dashed var(--line); border-radius:12px;
+  .dock{border:1.5px dashed var(--line); border-radius:12px;
     background:linear-gradient(180deg,var(--panel) 0%, #161a20 100%);
     padding:46px 24px; text-align:center; cursor:pointer; transition:border-color .15s, background .15s}
   .dock:hover{border-color:var(--amber-dim)}
@@ -57,8 +66,7 @@
   .dock .sub{font-family:var(--mono); font-size:12px; color:var(--muted); margin-top:8px}
   .dock .pick{color:var(--amber); text-decoration:underline; text-underline-offset:3px}
 
-  .bar{display:flex; align-items:center; gap:16px; margin:30px 0 14px;
-    min-height:30px}
+  .bar{display:flex; align-items:center; gap:16px; margin:30px 0 14px; min-height:30px}
   .bar h2{font-size:13px; font-family:var(--mono); letter-spacing:.06em;
     text-transform:uppercase; color:var(--muted); margin:0; font-weight:500}
   .bar .count{font-family:var(--mono); font-size:12px; color:var(--faint)}
@@ -77,7 +85,6 @@
     animation:rise .4s ease both}
   @keyframes rise{from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
   @media (prefers-reduced-motion:reduce){.cell{animation:none; opacity:1}}
-  /* film-strip header */
   .cell .strip{display:flex; align-items:center; gap:10px; padding:8px 12px;
     background:#11151a; border-bottom:1px solid var(--line)}
   .cell .sprockets{flex:1; height:8px;
@@ -89,6 +96,8 @@
     background:#0e1116 repeating-conic-gradient(#161a20 0% 25%, #12161b 0% 50%) 50%/16px 16px;
     min-height:120px}
   .cell .stage img{max-width:100%; height:auto; display:block;
+    box-shadow:0 6px 22px rgba(0,0,0,.45); border-radius:2px}
+  .cell .stage video{max-width:100%; height:auto; display:block;
     box-shadow:0 6px 22px rgba(0,0,0,.45); border-radius:2px}
   .cell .meta{display:flex; align-items:center; justify-content:space-between; gap:8px;
     padding:10px 12px; border-top:1px solid var(--line)}
@@ -102,6 +111,37 @@
   .prog{height:2px; background:var(--amber); width:0; transition:width .2s; border-radius:2px}
   .progwrap{height:2px; background:var(--line)}
 
+  /* ---- layout mode ---- */
+  .layout-top{display:flex; flex-wrap:wrap; gap:12px; align-items:center;
+    margin:16px 0 12px; padding:12px 16px; background:var(--panel);
+    border:1px solid var(--line); border-radius:10px}
+  .layout-top label{font-family:var(--mono); font-size:11px; color:var(--faint);
+    text-transform:uppercase; letter-spacing:.07em}
+  .layout-top input[type=number]{width:70px; font-family:var(--mono); font-size:13px;
+    background:var(--panel-2); color:var(--ink); border:1px solid var(--line);
+    border-radius:6px; padding:5px 8px; text-align:center}
+  .layout-top .sep{color:var(--faint); font-family:var(--mono)}
+  .layout-body{display:flex; gap:16px; align-items:flex-start}
+  .layout-sidebar{width:200px; flex-shrink:0}
+  .layout-sidebar h3{font-family:var(--mono); font-size:11px; text-transform:uppercase;
+    letter-spacing:.07em; color:var(--faint); margin:0 0 10px}
+  .layout-item-row{display:flex; align-items:center; gap:8px; padding:6px 8px;
+    background:var(--panel); border:1px solid var(--line); border-radius:6px; margin-bottom:6px}
+  .layout-item-row .li-thumb{width:40px; height:30px; object-fit:contain; border-radius:3px;
+    background:#0e1116; flex-shrink:0}
+  .layout-item-row .li-name{font-family:var(--mono); font-size:10px; color:var(--muted);
+    flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .layout-item-row .li-dim{font-family:var(--mono); font-size:9px; color:var(--faint)}
+  .layout-item-row .li-del{background:none; border:none; color:var(--faint); cursor:pointer;
+    font-size:14px; line-height:1; padding:2px 4px}
+  .layout-item-row .li-del:hover{color:var(--amber)}
+  .layout-item-row.selected{border-color:var(--amber-dim)}
+  .canvas-wrap{flex:1; min-width:0; overflow:auto; background:#0a0c0f;
+    border:1px solid var(--line); border-radius:10px; padding:0}
+  #layoutCanvas{display:block; cursor:crosshair}
+  .layout-hint{font-family:var(--mono); font-size:11px; color:var(--faint); margin-top:8px}
+  .layout-progress{font-family:var(--mono); font-size:12px; color:var(--amber); margin-top:10px; display:none}
+
   footer{margin-top:48px; border-top:1px solid var(--line); padding-top:18px;
     font-family:var(--mono); font-size:11.5px; color:var(--faint); line-height:1.7}
   footer code{color:var(--muted)}
@@ -112,11 +152,18 @@
 <div class="wrap">
   <header>
     <div>
-      <div class="title"><span class="dot"></span><h1>Banner to GIF</h1></div>
-      <p class="tag" style="margin:10px 0 0">Drop HTML5 display ads, get small looping GIFs for a deck. <b>Everything runs in your browser</b> — nothing is uploaded.</p>
+      <div class="title"><span class="dot"></span><h1>Banner to GIF / Video</h1></div>
+      <p class="tag" style="margin:10px 0 0">Drop HTML5 display ads — export as looping GIF or WebM video. <b>Layout mode</b> composites multiple banners side-by-side into one video. <b>Everything runs in your browser.</b></p>
     </div>
   </header>
 
+  <!-- mode tabs -->
+  <div class="tabs">
+    <button class="tab active" id="tab-single-btn">Single banners</button>
+    <button class="tab" id="tab-layout-btn">Layout canvas</button>
+  </div>
+
+  <!-- shared controls -->
   <div class="controls" id="controls">
     <div class="ctl">
       <label>Frames / sec</label>
@@ -124,7 +171,7 @@
       <span class="val" id="fpsv">24</span>
     </div>
     <div class="ctl">
-      <label>Colors</label>
+      <label>Colors (GIF)</label>
       <input type="range" id="colors" min="16" max="256" step="8" value="128">
       <span class="val" id="colorsv">128</span>
     </div>
@@ -135,82 +182,140 @@
     </div>
     <div class="ctl">
       <label>Sharpness</label>
-      <select id="scale"><option value="1">1× native</option><option value="2" selected>2× crisp</option><option value="3">3× max</option></select>
+      <select id="scale">
+        <option value="1" selected>1× native</option>
+        <option value="2">2× crisp</option>
+        <option value="3">3× max</option>
+      </select>
     </div>
     <div class="ctl">
       <label>Playback</label>
       <select id="loop"><option value="0" selected>Loop forever</option><option value="1">Play once</option></select>
     </div>
+    <div class="ctl">
+      <label>Output format</label>
+      <select id="format" class="format-sel">
+        <option value="gif" selected>GIF (.gif)</option>
+        <option value="webm">Video (.webm)</option>
+      </select>
+    </div>
     <label class="toggle"><input type="checkbox" id="dither">Dither</label>
-    <div class="spacer"></div>
-    <div class="ctl" style="align-self:center">
-      <span class="tag" style="font-size:11px">Tested in Chrome / Edge.</span>
+  </div>
+
+  <!-- ===================== SINGLE TAB ===================== -->
+  <div id="tab-single">
+    <div class="dock" id="dock">
+      <div class="big">Drop banner <code>.html</code> files here</div>
+      <div class="sub">or <span class="pick">browse</span> &nbsp;·&nbsp; self-contained ads with inline fonts &amp; images work best</div>
+      <input type="file" id="file" accept=".html,text/html" multiple class="hidden">
+    </div>
+
+    <div class="bar hidden" id="bar">
+      <h2>Contact sheet</h2>
+      <span class="count" id="count"></span>
+      <div class="spacer"></div>
+      <button class="btn" id="clear">Clear</button>
+      <button class="btn primary" id="zip" disabled>Download all (.zip)</button>
+    </div>
+
+    <div class="sheet" id="sheet"></div>
+  </div>
+
+  <!-- ===================== LAYOUT TAB ===================== -->
+  <div id="tab-layout" class="hidden">
+    <div class="layout-top">
+      <label>Canvas</label>
+      <input type="number" id="lw" value="1920" min="100" max="7680">
+      <span class="sep">×</span>
+      <input type="number" id="lh" value="1080" min="100" max="4320">
+      <span class="sep">px</span>
+      <label style="margin-left:8px">BG</label>
+      <input type="color" id="lbg" value="#000000" style="width:36px;height:32px;border-radius:6px;border:1px solid var(--line);background:var(--panel-2);cursor:pointer;padding:2px">
+      <div class="spacer"></div>
+      <button class="btn" id="layout-upload-btn">+ Add banners</button>
+      <input type="file" id="layout-file" accept=".html,text/html" multiple class="hidden">
+      <button class="btn" id="layout-clear-btn">Clear</button>
+      <button class="btn primary" id="layout-render-btn" disabled>Render layout as video</button>
+    </div>
+
+    <div class="layout-body">
+      <div class="layout-sidebar">
+        <h3>Banners (<span id="layout-count">0</span>)</h3>
+        <div id="layout-list"></div>
+        <p class="layout-hint">Click to select · Drag on canvas to reposition · Del to remove</p>
+        <div class="layout-progress" id="layout-progress"></div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="layoutCanvas"></canvas>
+      </div>
     </div>
   </div>
 
-  <div class="dock" id="dock">
-    <div class="big">Drop banner <code>.html</code> files here</div>
-    <div class="sub">or <span class="pick">browse</span> &nbsp;·&nbsp; self-contained ads with inline fonts &amp; images work best</div>
-    <input type="file" id="file" accept=".html,text/html" multiple class="hidden">
-  </div>
-
-  <div class="bar hidden" id="bar">
-    <h2>Contact sheet</h2>
-    <span class="count" id="count"></span>
-    <div class="spacer"></div>
-    <button class="btn" id="clear">Clear</button>
-    <button class="btn primary" id="zip" disabled>Download all (.zip)</button>
-  </div>
-
-  <div class="sheet" id="sheet"></div>
-
   <footer>
-    Renders each ad in a sandboxed iframe, scrubs its CSS animations frame-by-frame via the Web Animations API, then quantizes and encodes a GIF locally. No server, no tracking.<br>
-    Tip: <code>Dither</code> off (default) keeps flat-color ads tiny. Turn it on only for gradient-heavy creative.
+    Renders each ad in a sandboxed iframe, scrubs CSS animations frame-by-frame via the Web Animations API, then encodes locally — GIF via median-cut quantization, video via MediaRecorder (WebM/VP9). No server, no tracking.<br>
+    <b>Layout mode:</b> positions multiple banners on a master canvas and composites them into a single WebM video.
+    Tip: <code>Dither</code> off keeps flat-color GIFs tiny. <code>1×</code> sharpness is usually sufficient.
   </footer>
 </div>
 
 <script>
 "use strict";
 
-/* ============================== controls ============================== */
+/* ── CONTROLS ─────────────────────────────────────────────── */
 const $ = s => document.querySelector(s);
-const opts = { fps:24, colors:128, hold:1.5, scale:2, loop:0, dither:false };
-function bindRange(id, key, fmt){
+const opts = { fps:24, colors:128, hold:1.5, scale:1, loop:0, dither:false, format:'gif' };
+
+function bindRange(id, key){
   const el=$('#'+id), out=$('#'+id+'v');
-  const upd=()=>{ opts[key]=parseFloat(el.value); if(out) out.textContent = fmt?fmt(el.value):el.value; };
+  const upd=()=>{ opts[key]=parseFloat(el.value); if(out) out.textContent=el.value; };
   el.addEventListener('input',upd); upd();
 }
 bindRange('fps','fps'); bindRange('colors','colors'); bindRange('hold','hold');
 $('#scale').addEventListener('change',e=>opts.scale=parseInt(e.target.value));
 $('#loop').addEventListener('change',e=>opts.loop=parseInt(e.target.value));
 $('#dither').addEventListener('change',e=>opts.dither=e.target.checked);
+$('#format').addEventListener('change',e=>{
+  opts.format=e.target.value;
+  $('#zip').textContent = opts.format==='gif' ? 'Download all (.zip)' : 'Download all (.zip)';
+});
 
-/* ============================== file intake ============================== */
+/* ── TABS ─────────────────────────────────────────────────── */
+const tabSingle=$('#tab-single'), tabLayout=$('#tab-layout');
+$('#tab-single-btn').addEventListener('click',()=>{
+  tabSingle.classList.remove('hidden'); tabLayout.classList.add('hidden');
+  $('#tab-single-btn').classList.add('active'); $('#tab-layout-btn').classList.remove('active');
+});
+$('#tab-layout-btn').addEventListener('click',()=>{
+  tabLayout.classList.remove('hidden'); tabSingle.classList.add('hidden');
+  $('#tab-layout-btn').classList.add('active'); $('#tab-single-btn').classList.remove('active');
+  initLayoutCanvas();
+});
+
+/* ── SINGLE MODE FILE INTAKE ─────────────────────────────── */
 const dock=$('#dock'), fileInput=$('#file'), sheet=$('#sheet');
-const results=[]; // {name, blob, w, h}
+const results=[];
 dock.addEventListener('click',()=>fileInput.click());
 fileInput.addEventListener('change',e=>handleFiles([...e.target.files]));
-;['dragenter','dragover'].forEach(ev=>dock.addEventListener(ev,e=>{e.preventDefault();dock.classList.add('drag');}));
-;['dragleave','drop'].forEach(ev=>dock.addEventListener(ev,e=>{e.preventDefault();dock.classList.remove('drag');}));
+['dragenter','dragover'].forEach(ev=>dock.addEventListener(ev,e=>{e.preventDefault();dock.classList.add('drag');}));
+['dragleave','drop'].forEach(ev=>dock.addEventListener(ev,e=>{e.preventDefault();dock.classList.remove('drag');}));
 dock.addEventListener('drop',e=>handleFiles([...e.dataTransfer.files]));
 
 async function handleFiles(files){
-  files = files.filter(f=>/\.html?$/i.test(f.name));
+  files=files.filter(f=>/\.html?$/i.test(f.name));
   if(!files.length) return;
   $('#bar').classList.remove('hidden');
-  for(const f of files){ await convertFile(f); }
+  for(const f of files) await convertFile(f);
 }
 $('#clear').addEventListener('click',()=>{ sheet.innerHTML=''; results.length=0; updateBar(); });
 $('#zip').addEventListener('click',downloadZip);
 
 function updateBar(){
-  $('#count').textContent = results.length ? results.length+' ready' : '';
-  $('#zip').disabled = results.length<1;
+  $('#count').textContent=results.length ? results.length+' ready' : '';
+  $('#zip').disabled=results.length<1;
   if(!sheet.children.length) $('#bar').classList.add('hidden');
 }
 
-/* ============================== one file ============================== */
+/* ── SINGLE MODE CONVERT ─────────────────────────────────── */
 const SIZE_RE=/width\s*=\s*(\d+)\s*,\s*height\s*=\s*(\d+)/i;
 const FNAME_RE=/(\d+)\s*[xX]\s*(\d+)/;
 function adSize(text,name){
@@ -220,11 +325,11 @@ function adSize(text,name){
 }
 
 async function convertFile(file){
-  const text = await file.text();
-  const [w,h] = adSize(text, file.name);
-  const base = file.name.replace(/\.html?$/i,'');
+  const text=await file.text();
+  const [w,h]=adSize(text,file.name);
+  const base=file.name.replace(/\.html?$/i,'');
+  const fmt=opts.format;
 
-  // build cell
   const cell=document.createElement('div');
   cell.className='cell work';
   cell.innerHTML=`
@@ -238,20 +343,38 @@ async function convertFile(file){
 
   try{
     await ensureFonts(text);
-    const { frames, delays } = await captureAd(text, w, h, opts, setProg, status);
+    const {frames,delays}=await captureAd(text,w,h,opts,setProg,status);
     status.textContent='encoding…';
-    await new Promise(r=>setTimeout(r,0));
-    const bytes = encodeGIF(frames, w, h, delays, opts);
-    const blob = new Blob([bytes], {type:'image/gif'});
-    const url = URL.createObjectURL(blob);
-    const kb = (blob.size/1024).toFixed(1);
+    await tick();
 
-    results.push({ name: base+'.gif', blob });
+    let blob, ext, mimeType;
+    if(fmt==='webm'){
+      blob=await encodeWebM(frames,w,h,delays,opts);
+      ext='.webm'; mimeType='video/webm';
+    } else {
+      const bytes=encodeGIF(frames,w,h,delays,opts);
+      blob=new Blob([bytes],{type:'image/gif'});
+      ext='.gif'; mimeType='image/gif';
+    }
+
+    const url=URL.createObjectURL(blob);
+    const kb=(blob.size/1024).toFixed(1);
+    results.push({name:base+ext, blob});
     cell.classList.remove('work');
-    cell.querySelector('.stage').innerHTML = `<img src="${url}" alt="${base}">`;
+
+    if(fmt==='webm'){
+      const vid=document.createElement('video');
+      vid.src=url; vid.autoplay=true; vid.loop=true; vid.muted=true; vid.playsInline=true;
+      vid.style.cssText='max-width:100%;height:auto;display:block;border-radius:2px;box-shadow:0 6px 22px rgba(0,0,0,.45)';
+      cell.querySelector('.stage').innerHTML='';
+      cell.querySelector('.stage').appendChild(vid);
+    } else {
+      cell.querySelector('.stage').innerHTML=`<img src="${url}" alt="${base}">`;
+    }
+
     const meta=document.createElement('div'); meta.className='meta';
-    meta.innerHTML=`<div class="specs">${frames.length} frames · ${opts.colors} col<br><span class="kb">${kb} KB</span></div>`;
-    const a=document.createElement('a'); a.className='dl'; a.href=url; a.download=base+'.gif'; a.textContent='Download';
+    meta.innerHTML=`<div class="specs">${frames.length} frames · ${fmt==='gif'? opts.colors+' col': 'WebM'}<br><span class="kb">${kb} KB</span></div>`;
+    const a=document.createElement('a'); a.className='dl'; a.href=url; a.download=base+ext; a.textContent='Download';
     meta.appendChild(a); cell.appendChild(meta);
     status.remove();
   }catch(err){
@@ -264,35 +387,30 @@ async function convertFile(file){
   updateBar();
 }
 
-/* ============================== font preload ==============================
-   Copy the ad's @font-face rules (base64) into the MAIN document so the glyphs
-   are decoded and cached before we rasterize via <foreignObject>. */
+/* ── FONT PRELOAD ────────────────────────────────────────── */
 const fontCache=new Set();
 async function ensureFonts(text){
-  const faces = text.match(/@font-face\s*\{[^}]*\}/gi) || [];
+  const faces=text.match(/@font-face\s*\{[^}]*\}/gi)||[];
   const jobs=[];
   for(const f of faces){
     const fam=/font-family:\s*['"]?([^;'"]+)['"]?/i.exec(f);
     const src=/url\(\s*['"]?(data:[^'")]+)['"]?\s*\)/i.exec(f);
     if(!fam||!src) continue;
     const weight=(/font-weight:\s*([^;]+)/i.exec(f)||[])[1]||'normal';
-    const style =(/font-style:\s*([^;]+)/i.exec(f)||[])[1]||'normal';
+    const style=(/font-style:\s*([^;]+)/i.exec(f)||[])[1]||'normal';
     const key=fam[1]+'|'+weight+'|'+style+'|'+src[1].length;
     if(fontCache.has(key)) continue; fontCache.add(key);
     try{
-      const ff=new FontFace(fam[1].trim(), `url(${src[1]})`,
-        {weight:weight.trim(), style:style.trim()});
-      jobs.push(ff.load().then(loaded=>document.fonts.add(loaded)).catch(()=>{}));
+      const ff=new FontFace(fam[1].trim(),`url(${src[1]})`,{weight:weight.trim(),style:style.trim()});
+      jobs.push(ff.load().then(l=>document.fonts.add(l)).catch(()=>{}));
     }catch(e){}
   }
   await Promise.all(jobs);
-  if(document.fonts && document.fonts.ready) await document.fonts.ready;
+  if(document.fonts?.ready) await document.fonts.ready;
 }
 
-/* ============================== capture ==============================
-   Render in a hidden iframe, pause every CSS animation, then scrub the
-   timeline and snapshot each frame through an SVG <foreignObject>. */
-async function captureAd(text, w, h, opts, setProg, status){
+/* ── CAPTURE AD ──────────────────────────────────────────── */
+async function captureAd(text,w,h,opts,setProg,status){
   const iframe=document.createElement('iframe');
   iframe.setAttribute('sandbox','allow-same-origin allow-scripts');
   iframe.style.cssText=`position:fixed;left:-99999px;top:0;width:${w}px;height:${h}px;border:0`;
@@ -301,44 +419,39 @@ async function captureAd(text, w, h, opts, setProg, status){
     const doc=iframe.contentDocument;
     doc.open(); doc.write(text); doc.close();
     await new Promise(res=>{ if(doc.readyState==='complete') res(); else iframe.onload=res; });
-    if(doc.fonts && doc.fonts.ready) await doc.fonts.ready;
-    await new Promise(r=>requestAnimationFrame(()=>r()));
+    if(doc.fonts?.ready) await doc.fonts.ready;
+    await raf();
 
     const win=iframe.contentWindow;
     let totalMs=0;
     const anims=doc.getAnimations?doc.getAnimations():[];
-    for(const a of anims){ a.pause();
+    for(const a of anims){
+      a.pause();
       try{ const e=a.effect.getComputedTiming().endTime; if(isFinite(e)&&e>totalMs) totalMs=e; }catch(_){}
     }
     const frameMs=1000/opts.fps;
-    if(!totalMs || totalMs<frameMs) totalMs=frameMs;
+    if(!totalMs||totalMs<frameMs) totalMs=frameMs;
 
-    // capture host (#ad if present, else body)
-    const host = doc.getElementById('ad') || doc.body;
+    const host=doc.getElementById('ad')||doc.body;
     const styleText=[...doc.querySelectorAll('style')].map(s=>s.textContent).join('\n');
-
     const times=[]; for(let t=0;t<totalMs-0.001;t+=frameMs) times.push(t); times.push(totalMs);
 
-    const frames=[]; // ImageData at native size
-    let prev=null;
+    const frames=[];
     for(let i=0;i<times.length;i++){
       for(const a of anims) a.currentTime=times[i];
-      await new Promise(r=>requestAnimationFrame(()=>r()));
-      const id = await snapshot(win, host, styleText, w, h, opts.scale);
-      // collapse static tail handled after the loop
-      frames.push(id); prev=id;
-      setProg(0.15 + 0.7*(i+1)/times.length);
-      if(i%4===0) await new Promise(r=>setTimeout(r,0));
+      await raf();
+      frames.push(await snapshot(win,host,styleText,w,h,opts.scale));
+      setProg(0.15+0.7*(i+1)/times.length);
+      if(i%4===0) await tick();
     }
-    // collapse trailing identical frames into one
-    while(frames.length>1 && sameFrame(frames[frames.length-1],frames[frames.length-2])) frames.pop();
+    while(frames.length>1&&sameFrame(frames[frames.length-1],frames[frames.length-2])) frames.pop();
 
     const cs=Math.max(2,Math.round(frameMs/10));
     const delays=frames.map(()=>cs);
     if(frames.length>1) delays[delays.length-1]=Math.max(cs,Math.round(opts.hold*100));
     else delays[0]=Math.max(cs,Math.round(opts.hold*100)||100);
 
-    return { frames, delays };
+    return {frames,delays};
   } finally { iframe.remove(); }
 }
 
@@ -349,19 +462,15 @@ function sameFrame(a,b){
   return true;
 }
 
-/* Snapshot one frame: serialize host with baked opacity/transform into an
-   SVG foreignObject, rasterize, downscale to native size, return ImageData. */
-async function snapshot(win, host, styleText, w, h, scale){
+async function snapshot(win,host,styleText,w,h,scale){
   const clone=host.cloneNode(true);
-  const live=host.querySelectorAll('*');
-  const copy=clone.querySelectorAll('*');
-  // bake current computed opacity/transform; kill animations in the snapshot
-  bakeNode(win, host, clone);
-  for(let i=0;i<live.length;i++) bakeNode(win, live[i], copy[i]);
+  const live=host.querySelectorAll('*'), copy=clone.querySelectorAll('*');
+  bakeNode(win,host,clone);
+  for(let i=0;i<live.length;i++) bakeNode(win,live[i],copy[i]);
   clone.setAttribute('xmlns','http://www.w3.org/1999/xhtml');
 
-  const inner = new XMLSerializer().serializeToString(clone);
-  const svg =
+  const inner=new XMLSerializer().serializeToString(clone);
+  const svg=
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w*scale}" height="${h*scale}" viewBox="0 0 ${w} ${h}">`+
     `<foreignObject x="0" y="0" width="${w}" height="${h}">`+
     `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${w}px;height:${h}px;position:relative;overflow:hidden">`+
@@ -381,27 +490,63 @@ async function snapshot(win, host, styleText, w, h, scale){
   }
   return cnv.getContext('2d').getImageData(0,0,w,h);
 }
-function bakeNode(win, liveEl, cloneEl){
+
+function bakeNode(win,liveEl,cloneEl){
   if(cloneEl.nodeType!==1) return;
   const cs=win.getComputedStyle(liveEl);
   let add=';animation:none!important;-webkit-animation:none!important;';
   add+='opacity:'+cs.opacity+';';
-  if(cs.transform && cs.transform!=='none') add+='transform:'+cs.transform+';';
-  cloneEl.setAttribute('style', (cloneEl.getAttribute('style')||'')+add);
+  if(cs.transform&&cs.transform!=='none') add+='transform:'+cs.transform+';';
+  cloneEl.setAttribute('style',(cloneEl.getAttribute('style')||'')+add);
 }
 
-/* ============================== quantize (median cut) ============================== */
-function buildPalette(sampleData, maxColors){
+/* ── VIDEO ENCODER (WebM via MediaRecorder) ──────────────── */
+async function encodeWebM(frames,w,h,delays,opts){
+  return new Promise((resolve,reject)=>{
+    const canvas=document.createElement('canvas');
+    canvas.width=w; canvas.height=h;
+    const ctx=canvas.getContext('2d');
+
+    const mimeType=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+      ? 'video/webm;codecs=vp9'
+      : MediaRecorder.isTypeSupported('video/webm;codecs=vp8')
+        ? 'video/webm;codecs=vp8'
+        : 'video/webm';
+
+    const stream=canvas.captureStream(0);
+    const track=stream.getVideoTracks()[0];
+    const recorder=new MediaRecorder(stream,{mimeType, videoBitsPerSecond:8_000_000});
+    const chunks=[];
+
+    recorder.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
+    recorder.onstop=()=>resolve(new Blob(chunks,{type:'video/webm'}));
+    recorder.onerror=e=>reject(e.error||new Error('MediaRecorder error'));
+    recorder.start();
+
+    let i=0;
+    function nextFrame(){
+      if(i>=frames.length){ recorder.stop(); return; }
+      ctx.putImageData(frames[i],0,0);
+      if(track.requestFrame) track.requestFrame();
+      const delayMs=delays[i]*10;
+      i++;
+      setTimeout(nextFrame,delayMs);
+    }
+    nextFrame();
+  });
+}
+
+/* ── GIF ENCODER ─────────────────────────────────────────── */
+function buildPalette(sampleData,maxColors){
   const px=[]; const d=sampleData.data;
-  const step=Math.max(1, Math.floor((d.length/4)/4000)); // ~4k samples
+  const step=Math.max(1,Math.floor((d.length/4)/4000));
   for(let i=0;i<d.length;i+=4*step) px.push([d[i],d[i+1],d[i+2]]);
   let boxes=[px];
   while(boxes.length<maxColors){
-    // pick box with largest channel range and >1 color
     let bi=-1,best=-1;
     for(let i=0;i<boxes.length;i++){
       const b=boxes[i]; if(b.length<2) continue;
-      const r=channelRange(b); if(r.range>best){best=r.range; bi=i;}
+      const r=channelRange(b); if(r.range>best){best=r.range;bi=i;}
     }
     if(bi<0) break;
     const b=boxes[bi]; const ch=channelRange(b).ch;
@@ -416,76 +561,51 @@ function buildPalette(sampleData, maxColors){
 }
 function channelRange(box){
   let mn=[255,255,255],mx=[0,0,0];
-  for(const p of box) for(let c=0;c<3;c++){ if(p[c]<mn[c])mn[c]=p[c]; if(p[c]>mx[c])mx[c]=p[c]; }
+  for(const p of box) for(let c=0;c<3;c++){if(p[c]<mn[c])mn[c]=p[c];if(p[c]>mx[c])mx[c]=p[c];}
   const ranges=[mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2]];
   const ch=ranges.indexOf(Math.max(...ranges));
-  return {ch, range:ranges[ch]};
+  return {ch,range:ranges[ch]};
 }
 
-/* ============================== GIF89a encoder ============================== */
-function encodeGIF(frames, w, h, delays, opts){
-  // global palette from the final (fully-composed) frame
-  const pal = buildPalette(frames[frames.length-1], opts.colors);
-  const nColors = pal.length;
-  let bits=1; while((1<<bits) < nColors) bits++; bits=Math.max(2,bits);
+function encodeGIF(frames,w,h,delays,opts){
+  const pal=buildPalette(frames[frames.length-1],opts.colors);
+  const nColors=pal.length;
+  let bits=1; while((1<<bits)<nColors) bits++; bits=Math.max(2,bits);
   const gctSize=1<<bits;
-
   const out=[];
   const push=(...b)=>{ for(const x of b) out.push(x&0xff); };
   const pushStr=s=>{ for(let i=0;i<s.length;i++) out.push(s.charCodeAt(i)); };
   const word=v=>{ out.push(v&0xff); out.push((v>>8)&0xff); };
-
-  pushStr('GIF89a');
-  word(w); word(h);
-  push(0x80 | 0x70 | (bits-1)); // GCT flag, 8-bit color res, GCT size
-  push(0,0);                    // bg index, aspect
+  pushStr('GIF89a'); word(w); word(h);
+  push(0x80|0x70|(bits-1)); push(0,0);
   for(let i=0;i<gctSize;i++){ const c=pal[i]||[0,0,0]; push(c[0],c[1],c[2]); }
-
-  if(opts.loop===0){ // NETSCAPE loop forever
-    push(0x21,0xFF,0x0B); pushStr('NETSCAPE2.0'); push(0x03,0x01,0x00,0x00,0x00);
-  }
-
-  // nearest-color cache keyed by packed rgb
+  if(opts.loop===0){ push(0x21,0xFF,0x0B); pushStr('NETSCAPE2.0'); push(0x03,0x01,0x00,0x00,0x00); }
   const cache=new Map();
   const nearest=(r,g,b)=>{
     const key=(r<<16)|(g<<8)|b; const hit=cache.get(key); if(hit!==undefined) return hit;
     let bi=0,bd=Infinity;
-    for(let i=0;i<nColors;i++){ const c=pal[i];
-      const dr=r-c[0],dg=g-c[1],db=b-c[2]; const d=dr*dr+dg*dg+db*db;
-      if(d<bd){bd=d;bi=i; if(d===0)break;}
-    }
+    for(let i=0;i<nColors;i++){ const c=pal[i]; const dr=r-c[0],dg=g-c[1],db=b-c[2]; const d=dr*dr+dg*dg+db*db; if(d<bd){bd=d;bi=i;if(d===0)break;} }
     cache.set(key,bi); return bi;
   };
-
   for(let f=0;f<frames.length;f++){
-    const data=frames[f].data;
-    const idx=new Uint8Array(w*h);
-    if(opts.dither){
-      ditherToIndices(data,w,h,pal,idx);
-    }else{
-      for(let p=0,q=0;p<data.length;p+=4,q++) idx[q]=nearest(data[p],data[p+1],data[p+2]);
-    }
-    // graphic control extension
-    push(0x21,0xF9,0x04, 0x04 /*disposal=1*/, delays[f]&0xff,(delays[f]>>8)&0xff, 0x00,0x00);
-    // image descriptor
+    const data=frames[f].data; const idx=new Uint8Array(w*h);
+    if(opts.dither) ditherToIndices(data,w,h,pal,idx);
+    else for(let p=0,q=0;p<data.length;p+=4,q++) idx[q]=nearest(data[p],data[p+1],data[p+2]);
+    push(0x21,0xF9,0x04,0x04,delays[f]&0xff,(delays[f]>>8)&0xff,0x00,0x00);
     push(0x2C); word(0); word(0); word(w); word(h); push(0x00);
-    const minCode=bits;
-    push(minCode);
-    const lzw=lzwEncode(idx, minCode);
-    for(let i=0;i<lzw.length;i+=255){
-      const chunk=lzw.slice(i,i+255); push(chunk.length); for(const b of chunk) push(b);
-    }
-    push(0x00); // block terminator
+    const minCode=bits; push(minCode);
+    const lzw=lzwEncode(idx,minCode);
+    for(let i=0;i<lzw.length;i+=255){ const chunk=lzw.slice(i,i+255); push(chunk.length); for(const b of chunk) push(b); }
+    push(0x00);
   }
   push(0x3B);
   return new Uint8Array(out);
 }
 
 function ditherToIndices(data,w,h,pal,idx){
-  // Floyd–Steinberg in RGB, mapping to palette
   const buf=new Float32Array(w*h*3);
-  for(let i=0,j=0;i<data.length;i+=4,j+=3){ buf[j]=data[i];buf[j+1]=data[i+1];buf[j+2]=data[i+2]; }
-  const near=(r,g,b)=>{ let bi=0,bd=Infinity; for(let i=0;i<pal.length;i++){const c=pal[i];const dr=r-c[0],dg=g-c[1],db=b-c[2];const d=dr*dr+dg*dg+db*db; if(d<bd){bd=d;bi=i;}} return bi; };
+  for(let i=0,j=0;i<data.length;i+=4,j+=3){buf[j]=data[i];buf[j+1]=data[i+1];buf[j+2]=data[i+2];}
+  const near=(r,g,b)=>{ let bi=0,bd=Infinity; for(let i=0;i<pal.length;i++){const c=pal[i];const dr=r-c[0],dg=g-c[1],db=b-c[2];const d=dr*dr+dg*dg+db*db;if(d<bd){bd=d;bi=i;}} return bi; };
   for(let y=0;y<h;y++) for(let x=0;x<w;x++){
     const o=(y*w+x)*3; const r=buf[o],g=buf[o+1],b=buf[o+2];
     const pi=near(r,g,b); idx[y*w+x]=pi; const c=pal[pi];
@@ -495,22 +615,20 @@ function ditherToIndices(data,w,h,pal,idx){
   }
 }
 
-function lzwEncode(indices, minCodeSize){
+function lzwEncode(indices,minCodeSize){
   const clear=1<<minCodeSize, end=clear+1;
   let codeSize=minCodeSize+1, next=end+1;
-  let dict=new Map();
-  const out=[]; let cur=0, n=0;
-  const emit=code=>{ cur |= code<<n; n+=codeSize; while(n>=8){ out.push(cur&0xff); cur>>=8; n-=8; } };
+  let dict=new Map(); const out=[]; let cur=0,n=0;
+  const emit=code=>{ cur|=code<<n; n+=codeSize; while(n>=8){out.push(cur&0xff);cur>>=8;n-=8;} };
   emit(clear);
   let prefix=indices[0];
   for(let i=1;i<indices.length;i++){
-    const k=indices[i], key=(prefix<<8)|k;
-    const got=dict.get(key);
+    const k=indices[i], key=(prefix<<8)|k, got=dict.get(key);
     if(got!==undefined){ prefix=got; }
     else{
       emit(prefix);
-      if(next<4096){ dict.set(key,next++); if(next===(1<<codeSize)+1&&codeSize<12) codeSize++; }
-      else{ emit(clear); dict=new Map(); next=end+1; codeSize=minCodeSize+1; }
+      if(next<4096){dict.set(key,next++);if(next===(1<<codeSize)+1&&codeSize<12)codeSize++;}
+      else{emit(clear);dict=new Map();next=end+1;codeSize=minCodeSize+1;}
       prefix=k;
     }
   }
@@ -519,7 +637,7 @@ function lzwEncode(indices, minCodeSize){
   return out;
 }
 
-/* ============================== zip (store, no compression) ============================== */
+/* ── ZIP ─────────────────────────────────────────────────── */
 const CRC=(()=>{ const t=new Uint32Array(256); for(let n=0;n<256;n++){let c=n; for(let k=0;k<8;k++) c=c&1?0xEDB88320^(c>>>1):c>>>1; t[n]=c>>>0;} return t; })();
 function crc32(u8){ let c=0xFFFFFFFF; for(let i=0;i<u8.length;i++) c=CRC[(c^u8[i])&0xff]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
 async function downloadZip(){
@@ -538,12 +656,334 @@ async function downloadZip(){
   const cd=concat(central); const cdStart=offset;
   const eocd=concat([u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),u32(cd.length),u32(cdStart),u16(0)]);
   const blob=new Blob([concat(chunks),cd,eocd],{type:'application/zip'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='banner-gifs.zip'; a.click();
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='banners.zip'; a.click();
 }
-function concat(arrs){ let len=0; for(const a of arrs) len+=a.length; const out=new Uint8Array(len); let o=0; for(const a of arrs){ out.set(a,o); o+=a.length; } return out; }
+function concat(arrs){ let len=0; for(const a of arrs) len+=a.length; const out=new Uint8Array(len); let o=0; for(const a of arrs){out.set(a,o);o+=a.length;} return out; }
+
+/* ── LAYOUT MODE ─────────────────────────────────────────── */
+const layout={
+  w:1920, h:1080,
+  bg:'#000000',
+  items:[], // {name,frames,delays,w,h,x,y,_canvases:[]}
+  selected:-1,
+  dragging:false,
+  dragOffX:0, dragOffY:0
+};
+
+let layoutCanvas, layoutCtx, displayScale=1, layoutAnimId=null, layoutAnimStart=null;
+
+function initLayoutCanvas(){
+  if(layoutCanvas) return; // already init
+  layoutCanvas=document.getElementById('layoutCanvas');
+  layoutCtx=layoutCanvas.getContext('2d');
+  resizeLayoutCanvas();
+  window.addEventListener('resize',resizeLayoutCanvas);
+
+  layoutCanvas.addEventListener('mousedown',onLayoutMouseDown);
+  layoutCanvas.addEventListener('mousemove',onLayoutMouseMove);
+  layoutCanvas.addEventListener('mouseup',()=>{ layout.dragging=false; });
+  layoutCanvas.addEventListener('mouseleave',()=>{ layout.dragging=false; });
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Delete'||e.key==='Backspace'){
+      if(layout.selected>=0 && document.activeElement.tagName!=='INPUT'){
+        layout.items.splice(layout.selected,1);
+        layout.selected=-1;
+        updateLayoutSidebar();
+      }
+    }
+  });
+
+  startLayoutAnim();
+  drawLayoutEditor(0);
+}
+
+function resizeLayoutCanvas(){
+  if(!layoutCanvas) return;
+  const wrap=layoutCanvas.parentElement;
+  const maxW=wrap.clientWidth||800;
+  displayScale=Math.min(1, maxW/layout.w);
+  layoutCanvas.width=Math.round(layout.w*displayScale);
+  layoutCanvas.height=Math.round(layout.h*displayScale);
+  layoutCanvas.style.width=layoutCanvas.width+'px';
+  layoutCanvas.style.height=layoutCanvas.height+'px';
+}
+
+function getLogicalPos(e){
+  const rect=layoutCanvas.getBoundingClientRect();
+  return {
+    x:(e.clientX-rect.left)*(layoutCanvas.width/rect.width)/displayScale,
+    y:(e.clientY-rect.top)*(layoutCanvas.height/rect.height)/displayScale
+  };
+}
+
+function bannerAtPos(lx,ly){
+  for(let i=layout.items.length-1;i>=0;i--){
+    const it=layout.items[i];
+    if(lx>=it.x&&lx<=it.x+it.w&&ly>=it.y&&ly<=it.y+it.h) return i;
+  }
+  return -1;
+}
+
+function onLayoutMouseDown(e){
+  const {x,y}=getLogicalPos(e);
+  const idx=bannerAtPos(x,y);
+  if(idx>=0){
+    layout.selected=idx;
+    layout.dragging=true;
+    layout.dragOffX=x-layout.items[idx].x;
+    layout.dragOffY=y-layout.items[idx].y;
+    // bring to front
+    const it=layout.items.splice(idx,1)[0];
+    layout.items.push(it);
+    layout.selected=layout.items.length-1;
+    updateLayoutSidebar();
+  } else {
+    layout.selected=-1;
+    updateLayoutSidebar();
+  }
+}
+
+function onLayoutMouseMove(e){
+  if(!layout.dragging||layout.selected<0) return;
+  const {x,y}=getLogicalPos(e);
+  const it=layout.items[layout.selected];
+  it.x=Math.max(0,Math.min(layout.w-it.w, x-layout.dragOffX));
+  it.y=Math.max(0,Math.min(layout.h-it.h, y-layout.dragOffY));
+}
+
+function startLayoutAnim(){
+  if(layoutAnimId) return;
+  layoutAnimStart=performance.now();
+  function tick(){
+    layoutAnimId=requestAnimationFrame(tick);
+    drawLayoutEditor(performance.now()-layoutAnimStart);
+  }
+  layoutAnimId=requestAnimationFrame(tick);
+}
+
+function getFrameCanvas(item,frameIdx){
+  if(!item._canvases) item._canvases=[];
+  if(!item._canvases[frameIdx]){
+    const c=document.createElement('canvas'); c.width=item.w; c.height=item.h;
+    c.getContext('2d').putImageData(item.frames[frameIdx],0,0);
+    item._canvases[frameIdx]=c;
+  }
+  return item._canvases[frameIdx];
+}
+
+function getFrameAtTime(item,timeMs){
+  if(!item.frames.length) return null;
+  const totalMs=item.delays.reduce((a,d)=>a+d*10,0);
+  let t=timeMs%totalMs; let cumMs=0;
+  for(let i=0;i<item.frames.length;i++){
+    cumMs+=item.delays[i]*10;
+    if(t<cumMs) return {idx:i};
+  }
+  return {idx:item.frames.length-1};
+}
+
+function drawLayoutEditor(timeMs){
+  if(!layoutCtx) return;
+  const ctx=layoutCtx;
+  const s=displayScale;
+
+  // background
+  ctx.fillStyle=layout.bg;
+  ctx.fillRect(0,0,layoutCanvas.width,layoutCanvas.height);
+
+  // subtle grid
+  ctx.strokeStyle='rgba(255,255,255,0.04)';
+  ctx.lineWidth=1;
+  const gridStep=Math.round(100*s);
+  for(let x=0;x<layoutCanvas.width;x+=gridStep){ ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,layoutCanvas.height);ctx.stroke(); }
+  for(let y=0;y<layoutCanvas.height;y+=gridStep){ ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(layoutCanvas.width,y);ctx.stroke(); }
+
+  for(let i=0;i<layout.items.length;i++){
+    const it=layout.items[i];
+    const fi=getFrameAtTime(it,timeMs);
+    if(fi){
+      const fc=getFrameCanvas(it,fi.idx);
+      ctx.drawImage(fc, it.x*s, it.y*s, it.w*s, it.h*s);
+    }
+    // selection border
+    if(i===layout.selected){
+      ctx.strokeStyle='#ff8a3d';
+      ctx.lineWidth=2/s;
+      ctx.strokeRect(it.x*s-1,it.y*s-1,it.w*s+2,it.h*s+2);
+    }
+    // dim label
+    ctx.fillStyle='rgba(0,0,0,0.55)';
+    ctx.fillRect(it.x*s, it.y*s, it.w*s, Math.min(16, it.h*s));
+    ctx.fillStyle='#ff8a3d';
+    ctx.font=`bold ${Math.round(10)}px monospace`;
+    ctx.fillText(`${it.name} ${it.w}×${it.h}`, it.x*s+4, it.y*s+11);
+  }
+
+  if(!layout.items.length){
+    ctx.fillStyle='rgba(255,255,255,0.12)';
+    ctx.font='14px monospace';
+    ctx.textAlign='center';
+    ctx.fillText('Add banners using the button above', layoutCanvas.width/2, layoutCanvas.height/2);
+    ctx.textAlign='left';
+  }
+}
+
+function autoPosition(item){
+  if(!layout.items.length){ item.x=20; item.y=20; return; }
+  const last=layout.items[layout.items.length-1];
+  item.x=last.x+last.w+20; item.y=last.y;
+  if(item.x+item.w>layout.w-20){
+    item.x=20;
+    item.y=Math.max(...layout.items.map(i=>i.y+i.h))+20;
+  }
+}
+
+function updateLayoutSidebar(){
+  const list=document.getElementById('layout-list');
+  const countEl=document.getElementById('layout-count');
+  countEl.textContent=layout.items.length;
+  list.innerHTML='';
+  layout.items.forEach((it,i)=>{
+    const row=document.createElement('div');
+    row.className='layout-item-row'+(i===layout.selected?' selected':'');
+    const thumb=document.createElement('canvas');
+    thumb.className='li-thumb'; thumb.width=it.w; thumb.height=it.h;
+    if(it.frames.length) thumb.getContext('2d').putImageData(it.frames[0],0,0);
+    thumb.style.cssText=`width:40px;height:${Math.round(40*it.h/it.w)}px;background:#0e1116;border-radius:3px;flex-shrink:0`;
+    const nameDiv=document.createElement('div'); nameDiv.style.flex='1'; nameDiv.style.overflow='hidden';
+    nameDiv.innerHTML=`<div class="li-name">${it.name}</div><div class="li-dim">${it.w}×${it.h}</div>`;
+    const del=document.createElement('button'); del.className='li-del'; del.textContent='×';
+    del.addEventListener('click',()=>{
+      layout.items.splice(i,1);
+      if(layout.selected===i) layout.selected=-1;
+      else if(layout.selected>i) layout.selected--;
+      updateLayoutSidebar();
+      document.getElementById('layout-render-btn').disabled=!layout.items.length;
+    });
+    row.addEventListener('click',()=>{ layout.selected=i; updateLayoutSidebar(); });
+    row.appendChild(thumb); row.appendChild(nameDiv); row.appendChild(del);
+    list.appendChild(row);
+  });
+  document.getElementById('layout-render-btn').disabled=!layout.items.length;
+}
+
+// Layout file upload
+$('#layout-upload-btn').addEventListener('click',()=>$('#layout-file').click());
+$('#layout-file').addEventListener('change',async e=>{
+  const files=[...e.target.files].filter(f=>/\.html?$/i.test(f.name));
+  if(!files.length) return;
+  initLayoutCanvas();
+  const progress=document.getElementById('layout-progress');
+  for(const f of files){
+    progress.style.display='block';
+    progress.textContent=`Capturing: ${f.name}…`;
+    try{
+      const text=await f.text();
+      const [w,h]=adSize(text,f.name);
+      await ensureFonts(text);
+      const item={name:f.name.replace(/\.html?$/i,''), w, h, x:0, y:0, frames:[], delays:[], _canvases:[]};
+      autoPosition(item);
+      const {frames,delays}=await captureAd(text,w,h,opts,()=>{},null);
+      item.frames=frames; item.delays=delays;
+      layout.items.push(item);
+      updateLayoutSidebar();
+    }catch(err){
+      console.error('Layout capture failed:',err);
+      progress.textContent=`Failed: ${f.name} — ${err.message||err}`;
+      await new Promise(r=>setTimeout(r,1500));
+    }
+  }
+  progress.textContent='';
+  progress.style.display='none';
+  e.target.value='';
+});
+
+$('#layout-clear-btn').addEventListener('click',()=>{
+  layout.items=[]; layout.selected=-1;
+  updateLayoutSidebar();
+});
+
+$('#lw').addEventListener('change',e=>{ layout.w=Math.max(100,parseInt(e.target.value)||1920); resizeLayoutCanvas(); });
+$('#lh').addEventListener('change',e=>{ layout.h=Math.max(100,parseInt(e.target.value)||1080); resizeLayoutCanvas(); });
+$('#lbg').addEventListener('input',e=>{ layout.bg=e.target.value; });
+
+$('#layout-render-btn').addEventListener('click',renderLayout);
+
+async function renderLayout(){
+  if(!layout.items.length) return;
+  const btn=document.getElementById('layout-render-btn');
+  const progress=document.getElementById('layout-progress');
+  btn.disabled=true; btn.textContent='Rendering…';
+  progress.style.display='block'; progress.textContent='Setting up master canvas…';
+
+  try{
+    const masterCanvas=document.createElement('canvas');
+    masterCanvas.width=layout.w; masterCanvas.height=layout.h;
+    const ctx=masterCanvas.getContext('2d');
+
+    // Pre-cache all frame canvases
+    for(const item of layout.items){
+      for(let i=0;i<item.frames.length;i++) getFrameCanvas(item,i);
+    }
+
+    // Total duration = max of all banner durations
+    const maxDurationMs=Math.max(...layout.items.map(it=>
+      it.delays.reduce((a,d)=>a+d*10,0)
+    ));
+    const frameMs=1000/opts.fps;
+    const totalFrames=Math.ceil(maxDurationMs/frameMs)+Math.round(opts.hold*opts.fps);
+
+    const mimeType=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+      ? 'video/webm;codecs=vp9'
+      : 'video/webm';
+    const stream=masterCanvas.captureStream(0);
+    const track=stream.getVideoTracks()[0];
+    const recorder=new MediaRecorder(stream,{mimeType, videoBitsPerSecond:12_000_000});
+    const chunks=[];
+
+    await new Promise((resolve,reject)=>{
+      recorder.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
+      recorder.onstop=resolve;
+      recorder.onerror=e=>reject(e.error||new Error('Recorder error'));
+      recorder.start();
+
+      let frameIdx=0;
+      function nextFrame(){
+        if(frameIdx>=totalFrames){ recorder.stop(); return; }
+        const timeMs=frameIdx*frameMs;
+        ctx.fillStyle=layout.bg;
+        ctx.fillRect(0,0,layout.w,layout.h);
+        for(const item of layout.items){
+          const fi=getFrameAtTime(item,timeMs);
+          if(fi) ctx.drawImage(getFrameCanvas(item,fi.idx), item.x, item.y, item.w, item.h);
+        }
+        if(track.requestFrame) track.requestFrame();
+        frameIdx++;
+        if(frameIdx%20===0) progress.textContent=`Encoding frame ${frameIdx}/${totalFrames}…`;
+        setTimeout(nextFrame, frameMs);
+      }
+      nextFrame();
+    });
+
+    const blob=new Blob(chunks,{type:'video/webm'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download='layout-render.webm'; a.click();
+    progress.textContent=`Done — ${(blob.size/1024/1024).toFixed(1)} MB`;
+    setTimeout(()=>{ progress.textContent=''; progress.style.display='none'; },3000);
+  }catch(err){
+    console.error(err);
+    progress.textContent='Render failed: '+(err.message||err);
+  }
+  btn.disabled=false; btn.textContent='Render layout as video';
+}
+
+/* ── HELPERS ─────────────────────────────────────────────── */
+const raf=()=>new Promise(r=>requestAnimationFrame(()=>r()));
+const tick=()=>new Promise(r=>setTimeout(r,0));
 
 /* expose for headless testing */
-window.__convertText = async (text,name)=>{ const f=new File([text],name,{type:'text/html'}); $('#bar').classList.remove('hidden'); await convertFile(f); return results[results.length-1]; };
+window.__convertText=async(text,name)=>{ const f=new File([text],name,{type:'text/html'}); $('#bar').classList.remove('hidden'); await convertFile(f); return results[results.length-1]; };
 </script>
 </body>
 </html>
