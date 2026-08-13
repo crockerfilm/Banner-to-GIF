@@ -208,6 +208,14 @@
       <span class="val" style="font-size:10px;color:var(--faint)">0 = auto</span>
     </div>
     <label class="toggle"><input type="checkbox" id="dither">Dither</label>
+    <label class="toggle" title="Preserve alpha where the banner itself has a transparent background">
+      <input type="checkbox" id="transparent">Transparent
+    </label>
+    <div class="ctl" title="Fallback fill used when a format can't carry transparency (MP4, or WebM without alpha support)">
+      <label>Matte</label>
+      <input type="color" id="matte" value="#ffffff"
+        style="width:36px;height:32px;border-radius:6px;border:1px solid var(--line);background:var(--panel-2);cursor:pointer;padding:2px">
+    </div>
   </div>
 
   <!-- ===================== SINGLE TAB ===================== -->
@@ -276,7 +284,7 @@
 
 /* ── CONTROLS ─────────────────────────────────────────────── */
 const $ = s => document.querySelector(s);
-const opts = { fps:24, colors:128, hold:1.5, scale:1, loop:0, dither:false, format:'gif', dur:0 };
+const opts = { fps:24, colors:128, hold:1.5, scale:1, loop:0, dither:false, format:'gif', dur:0, transparent:false, matte:'#ffffff' };
 
 function bindRange(id, key){
   const el=$('#'+id), out=$('#'+id+'v');
@@ -287,6 +295,8 @@ bindRange('fps','fps'); bindRange('colors','colors'); bindRange('hold','hold');
 $('#scale').addEventListener('change',e=>opts.scale=parseInt(e.target.value));
 $('#loop').addEventListener('change',e=>opts.loop=parseInt(e.target.value));
 $('#dither').addEventListener('change',e=>opts.dither=e.target.checked);
+$('#transparent').addEventListener('change',e=>opts.transparent=e.target.checked);
+$('#matte').addEventListener('input',e=>opts.matte=e.target.value);
 $('#dur').addEventListener('input',e=>opts.dur=parseFloat(e.target.value)||0);
 $('#format').addEventListener('change',e=>{
   opts.format=e.target.value;
@@ -325,11 +335,14 @@ const MIME_MAP={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gi
   webp:'image/webp',svg:'image/svg+xml',ico:'image/x-icon',bmp:'image/bmp',
   woff:'font/woff',woff2:'font/woff2',ttf:'font/ttf',otf:'font/otf',
   eot:'application/vnd.ms-fontobject',mp4:'video/mp4',webm:'video/webm',
-  mp3:'audio/mpeg',ogg:'audio/ogg',wav:'audio/wav',json:'application/json'};
+  mp3:'audio/mpeg',ogg:'audio/ogg',wav:'audio/wav',json:'application/json',
+  js:'application/javascript',css:'text/css'};
 
 function inlineAssets(html, assets){
   for(const [name,dataUrl] of assets){
-    // Cover src=, href=, url(), and data-src= in all quote styles
+    if(!name) continue;
+    // Cover src=, href=, url(), data-src=, and bare quoted-path refs
+    // (e.g. CreateJS/Animate CC manifests use `src:"images/foo.png"` as a JS object property, not an HTML attribute)
     html=html.split(`src="${name}"`).join(`src="${dataUrl}"`);
     html=html.split(`src='${name}'`).join(`src="${dataUrl}"`);
     html=html.split(`href="${name}"`).join(`href="${dataUrl}"`);
@@ -338,8 +351,40 @@ function inlineAssets(html, assets){
     html=html.split(`url("${name}")`).join(`url("${dataUrl}")`);
     html=html.split(`url('${name}')`).join(`url('${dataUrl}')`);
     html=html.split(`data-src="${name}"`).join(`data-src="${dataUrl}"`);
+    // CreateJS/PreloadJS manifest entries (`src:"images/foo.png"`) sniff file type from
+    // the URL's extension — a data: URI has none, so it silently loads as type "text"
+    // instead of "image" and the Bitmap that uses it never draws. Tag the type explicitly.
+    if(/^data:image\//i.test(dataUrl)){
+      html=html.split(`src:"${name}"`).join(`src:"${dataUrl}",type:"image"`);
+      html=html.split(`src:'${name}'`).join(`src:'${dataUrl}',type:"image"`);
+    }
+    html=html.split(`"${name}"`).join(`"${dataUrl}"`);
+    html=html.split(`'${name}'`).join(`'${dataUrl}'`);
   }
   return html;
+}
+
+// macOS zip junk: __MACOSX/ resource-fork copies and .DS_Store — never real content
+function isJunkZipPath(p){
+  return p.startsWith('__MACOSX/')||/\/\._/.test(p)||/^\._/.test(p)||/(^|\/)\.DS_Store$/.test(p);
+}
+
+// Shared top-level folder across a package's files, e.g. "banner-pkg/" — lets us key
+// assets by the same relative path (with subfolders) that the banner's own HTML/JS uses,
+// instead of just the bare filename.
+function commonRootDir(paths){
+  if(!paths.length) return '';
+  const root=paths[0].split('/')[0];
+  for(const p of paths){ const parts=p.split('/'); if(parts.length<2||parts[0]!==root) return ''; }
+  return root+'/';
+}
+
+// UTF-8-safe base64 encode, chunked to avoid call-stack overflow on large files
+function utf8ToBase64(str){
+  const bytes=new TextEncoder().encode(str);
+  let bin=''; const chunk=0x8000;
+  for(let i=0;i<bytes.length;i+=chunk) bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+chunk));
+  return btoa(bin);
 }
 
 // Stub for Google/DoubleClick Enabler — fires INIT immediately so GWD ads animate
@@ -379,20 +424,43 @@ async function extractBanners(files){
     if(/\.zip$/i.test(f.name)){
       try{
         const zip=await JSZip.loadAsync(f);
-        const allEntries=Object.entries(zip.files);
+        const allEntries=Object.entries(zip.files).filter(([p])=>!isJunkZipPath(p));
 
-        // First pass: collect non-HTML assets as base64 data URLs
+        // Assets are usually referenced relative to the package's shared top folder
+        // (e.g. `libs/1.0.0/createjs.min.js`, `images/foo.png`) — strip that folder so
+        // full relative-path references resolve, not just bare filenames.
+        const assetPaths=allEntries.filter(([p,e])=>!e.dir&&!/\.html?$/i.test(p)).map(([p])=>p);
+        const root=commonRootDir(assetPaths.length?assetPaths:allEntries.filter(([,e])=>!e.dir).map(([p])=>p));
+        const relOf=p=>root&&p.startsWith(root)?p.slice(root.length):p;
+
+        // First pass: collect non-HTML assets as base64 data URLs, keyed by relative
+        // path (and bare filename as a fallback for references without a folder)
         const assets=new Map();
+        const jsCssEntries=[];
         for(const [path,entry] of allEntries){
           if(entry.dir||/\.html?$/i.test(path)) continue;
           const fname=path.split('/').pop();
           const ext=(fname.split('.').pop()||'').toLowerCase();
           const mime=MIME_MAP[ext]||'application/octet-stream';
           const b64=await entry.async('base64');
-          assets.set(fname,`data:${mime};base64,${b64}`);
+          const dataUrl=`data:${mime};base64,${b64}`;
+          const rel=relOf(path);
+          assets.set(rel,dataUrl);
+          if(rel!==fname) assets.set(fname,dataUrl);
+          if(ext==='js'||ext==='css') jsCssEntries.push([rel,entry,mime]);
         }
 
-        // Second pass: process HTML files with assets inlined
+        // Second pass: patch relative asset references *inside* JS/CSS text — e.g. an
+        // Adobe Animate CC / CreateJS export's manifest (`src:"images/foo.png"`) is a
+        // JS object property, not an HTML attribute, so it needs the same treatment
+        // before that script gets inlined into the HTML.
+        for(const [rel,entry,mime] of jsCssEntries){
+          let text=await entry.async('text');
+          text=inlineAssets(text,assets);
+          assets.set(rel,`data:${mime};base64,${utf8ToBase64(text)}`);
+        }
+
+        // Third pass: process HTML files with assets inlined
         const htmlEntries=allEntries
           .filter(([p,e])=>!e.dir&&/\.html?$/i.test(p))
           .sort(([a],[b])=>a.localeCompare(b));
@@ -468,12 +536,20 @@ async function convertBanner(text,name){
     status.textContent='encoding…';
     await tick();
 
-    let blob, ext, mimeType;
+    let blob, ext, mimeType, alphaNote='';
     if(fmt==='mp4'){
-      blob=await encodeMp4(frames,w,h,delays,opts);
+      const outFrames=opts.transparent?flattenAlpha(frames,opts.matte):frames;
+      if(opts.transparent) alphaNote=' · MP4 has no alpha, flattened to matte';
+      blob=await encodeMp4(outFrames,w,h,delays,opts);
       ext='.mp4'; mimeType='video/mp4';
     } else if(fmt==='webm'){
-      blob=await encodeWebM(frames,w,h,delays,opts);
+      if(opts.transparent&&await webmAlphaSupported(w,h)){
+        blob=await encodeWebMAlpha(frames,w,h,delays,opts);
+      } else {
+        const outFrames=opts.transparent?flattenAlpha(frames,opts.matte):frames;
+        if(opts.transparent) alphaNote=' · alpha WebM unsupported here, flattened to matte';
+        blob=await encodeWebM(outFrames,w,h,delays,opts);
+      }
       ext='.webm'; mimeType='video/webm';
     } else {
       const bytes=encodeGIF(frames,w,h,delays,opts);
@@ -498,7 +574,7 @@ async function convertBanner(text,name){
 
     const fmtLabel=fmt==='gif'?opts.colors+' col':fmt.toUpperCase();
     const meta=document.createElement('div'); meta.className='meta';
-    meta.innerHTML=`<div class="specs">${frames.length} frames · ${fmtLabel}<br><span class="kb">${kb} KB</span></div>`;
+    meta.innerHTML=`<div class="specs">${frames.length} frames · ${fmtLabel}<br><span class="kb">${kb} KB</span>${alphaNote?'<br><span style="color:var(--amber)">'+alphaNote+'</span>':''}</div>`;
     const a=document.createElement('a'); a.className='dl'; a.href=url; a.download=base+ext; a.textContent='Download';
     meta.appendChild(a); cell.appendChild(meta);
     status.remove();
@@ -574,7 +650,15 @@ async function captureAd(text,w,h,opts,setProg,status){
       }catch(_){}
     }
 
-    // 3) Common ad variables set by studios
+    // 3) CreateJS / Adobe Animate CC timeline (exportRoot.getDuration(), in ms already)
+    if(!totalMs){
+      try{
+        const d=win.exportRoot?.getDuration?.();
+        if(d>0) totalMs=d;
+      }catch(_){}
+    }
+
+    // 4) Common ad variables set by studios
     if(!totalMs){
       try{
         const d=win.animDuration||win.adDuration||win.duration||
@@ -583,14 +667,14 @@ async function captureAd(text,w,h,opts,setProg,status){
       }catch(_){}
     }
 
-    // 4) data-duration attribute on #ad or body
+    // 5) data-duration attribute on #ad or body
     if(!totalMs){
       const el=doc.getElementById('ad')||doc.body;
       const d=parseFloat(el?.dataset?.duration);
       if(d>0) totalMs=d*1000;
     }
 
-    // 5) Fallback — scan inline styles for longest animation-duration
+    // 6) Fallback — scan inline styles for longest animation-duration
     if(!totalMs){
       const allEls=doc.querySelectorAll('*');
       for(const el of allEls){
@@ -603,7 +687,7 @@ async function captureAd(text,w,h,opts,setProg,status){
       }
     }
 
-    // 6) Hard fallback
+    // 7) Hard fallback
     if(!totalMs||totalMs<frameMs) totalMs=15000;
 
     const host=doc.getElementById('ad')||doc.body;
@@ -662,6 +746,22 @@ async function snapshot(win,host,styleText,w,h,scale){
 
   const big=document.createElement('canvas'); big.width=w*scale; big.height=h*scale;
   const bx=big.getContext('2d'); bx.drawImage(img,0,0,w*scale,h*scale);
+
+  // <canvas> content (CreateJS/Animate CC, PixiJS, raw canvas draws, etc.) is pixel data,
+  // not DOM — cloneNode() never copies it, so the SVG/foreignObject snapshot above always
+  // renders those canvases blank. Composite each live canvas's real pixels on top.
+  const hostRect=host.getBoundingClientRect();
+  const canvases=host.tagName==='CANVAS'?[host]:[...host.querySelectorAll('canvas')];
+  for(const c of canvases){
+    if(!c.width||!c.height) continue;
+    const cs=win.getComputedStyle(c);
+    if(cs.visibility==='hidden'||cs.display==='none') continue;
+    const r=c.getBoundingClientRect();
+    try{
+      bx.drawImage(c,(r.left-hostRect.left)*scale,(r.top-hostRect.top)*scale,r.width*scale,r.height*scale);
+    }catch(_){ /* tainted canvas (cross-origin draw) — skip, keep the blank fallback */ }
+  }
+
   let cnv=big;
   if(scale!==1){
     const small=document.createElement('canvas'); small.width=w; small.height=h;
@@ -691,6 +791,40 @@ function bakeNode(win,liveEl,cloneEl){
   const fl=cs.getPropertyValue('filter');
   if(fl&&fl!=='none') add+='filter:'+fl+';';
   cloneEl.setAttribute('style',(cloneEl.getAttribute('style')||'')+add);
+}
+
+/* ── ALPHA HELPERS ────────────────────────────────────────── */
+function hexToRgb(hex){
+  const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||'#ffffff')||[,'ff','ff','ff'];
+  return [parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)];
+}
+function flattenAlpha(frames,matteHex){
+  const [mr,mg,mb]=hexToRgb(matteHex);
+  return frames.map(f=>{
+    const out=new ImageData(new Uint8ClampedArray(f.data),f.width,f.height);
+    const d=out.data;
+    for(let i=0;i<d.length;i+=4){
+      const a=d[i+3];
+      if(a===255) continue;
+      const ia=a/255;
+      d[i]=Math.round(d[i]*ia+mr*(1-ia));
+      d[i+1]=Math.round(d[i+1]*ia+mg*(1-ia));
+      d[i+2]=Math.round(d[i+2]*ia+mb*(1-ia));
+      d[i+3]=255;
+    }
+    return out;
+  });
+}
+async function webmAlphaSupported(w,h){
+  if(!window.VideoEncoder||!VideoEncoder.isConfigSupported) return false;
+  try{
+    const {supported}=await VideoEncoder.isConfigSupported({codec:'vp09.00.10.08',width:w,height:h,alpha:'keep'});
+    return !!supported;
+  }catch(_){ return false; }
+}
+async function loadWebmMuxer(){
+  if(!window._webmmuxer) window._webmmuxer=await import('https://cdn.jsdelivr.net/npm/webm-muxer@5/build/webm-muxer.mjs');
+  return window._webmmuxer;
 }
 
 /* ── MP4 ENCODER (Web Codecs API + mp4-muxer) ───────────── */
@@ -771,11 +905,47 @@ async function encodeWebM(frames,w,h,delays,opts){
   });
 }
 
+/* ── VIDEO ENCODER (WebM w/ alpha, via WebCodecs VP9 + webm-muxer) ── */
+async function encodeWebMAlpha(frames,w,h,delays,opts){
+  const {Muxer,ArrayBufferTarget}=await loadWebmMuxer();
+  const target=new ArrayBufferTarget();
+  const muxer=new Muxer({target,video:{codec:'V_VP9',width:w,height:h,alpha:true}});
+  let encErr=null;
+  const encoder=new VideoEncoder({
+    output:(chunk,meta)=>muxer.addVideoChunk(chunk,meta),
+    error:e=>{ encErr=e; }
+  });
+  encoder.configure({codec:'vp09.00.10.08',width:w,height:h,bitrate:8_000_000,alpha:'keep'});
+
+  const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
+  const ctx=canvas.getContext('2d',{alpha:true});
+  let tsUs=0;
+  for(let i=0;i<frames.length;i++){
+    if(encErr) throw encErr;
+    ctx.clearRect(0,0,w,h);
+    ctx.putImageData(frames[i],0,0);
+    const vf=new VideoFrame(canvas,{timestamp:tsUs,duration:delays[i]*10*1000,alpha:'keep'});
+    encoder.encode(vf,{keyFrame:i%30===0});
+    vf.close();
+    tsUs+=delays[i]*10*1000;
+    if(encoder.encodeQueueSize>8) await new Promise(r=>setTimeout(r,0));
+  }
+  await encoder.flush();
+  encoder.close();
+  if(encErr) throw encErr;
+  muxer.finalize();
+  return new Blob([target.buffer],{type:'video/webm'});
+}
+
 /* ── GIF ENCODER ─────────────────────────────────────────── */
-function buildPalette(sampleData,maxColors){
+function buildPalette(sampleData,maxColors,skipTransparent,alphaThresh){
   const px=[]; const d=sampleData.data;
   const step=Math.max(1,Math.floor((d.length/4)/4000));
-  for(let i=0;i<d.length;i+=4*step) px.push([d[i],d[i+1],d[i+2]]);
+  for(let i=0;i<d.length;i+=4*step){
+    if(skipTransparent&&d[i+3]<alphaThresh) continue;
+    px.push([d[i],d[i+1],d[i+2]]);
+  }
+  if(!px.length) px.push([0,0,0]);
   let boxes=[px];
   while(boxes.length<maxColors){
     let bi=-1,best=-1;
@@ -803,9 +973,13 @@ function channelRange(box){
 }
 
 function encodeGIF(frames,w,h,delays,opts){
-  const pal=buildPalette(frames[frames.length-1],opts.colors);
+  const transparent=!!opts.transparent;
+  const alphaThresh=128;
+  const pal=buildPalette(frames[frames.length-1],transparent?Math.max(2,opts.colors-1):opts.colors,transparent,alphaThresh);
   const nColors=pal.length;
-  let bits=1; while((1<<bits)<nColors) bits++; bits=Math.max(2,bits);
+  const transIdx=transparent?nColors:-1;
+  const totalSlots=nColors+(transparent?1:0);
+  let bits=1; while((1<<bits)<totalSlots) bits++; bits=Math.max(2,bits);
   const gctSize=1<<bits;
   const out=[];
   const push=(...b)=>{ for(const x of b) out.push(x&0xff); };
@@ -822,11 +996,16 @@ function encodeGIF(frames,w,h,delays,opts){
     for(let i=0;i<nColors;i++){ const c=pal[i]; const dr=r-c[0],dg=g-c[1],db=b-c[2]; const d=dr*dr+dg*dg+db*db; if(d<bd){bd=d;bi=i;if(d===0)break;} }
     cache.set(key,bi); return bi;
   };
+  const disposal=transparent?2:1;
+  const packed=(disposal<<2)|(transparent?1:0);
   for(let f=0;f<frames.length;f++){
     const data=frames[f].data; const idx=new Uint8Array(w*h);
-    if(opts.dither) ditherToIndices(data,w,h,pal,idx);
-    else for(let p=0,q=0;p<data.length;p+=4,q++) idx[q]=nearest(data[p],data[p+1],data[p+2]);
-    push(0x21,0xF9,0x04,0x04,delays[f]&0xff,(delays[f]>>8)&0xff,0x00,0x00);
+    if(opts.dither&&!transparent) ditherToIndices(data,w,h,pal,idx);
+    else for(let p=0,q=0;p<data.length;p+=4,q++){
+      if(transparent&&data[p+3]<alphaThresh) idx[q]=transIdx;
+      else idx[q]=nearest(data[p],data[p+1],data[p+2]);
+    }
+    push(0x21,0xF9,0x04,packed,delays[f]&0xff,(delays[f]>>8)&0xff,transparent?transIdx:0x00,0x00);
     push(0x2C); word(0); word(0); word(w); word(h); push(0x00);
     const minCode=bits; push(minCode);
     const lzw=lzwEncode(idx,minCode);
@@ -1180,7 +1359,17 @@ async function renderLayout(){
     const frameMs=1000/opts.fps;
     const totalFrames=Math.ceil(maxDurationMs/frameMs)+Math.round(opts.hold*opts.fps);
 
-    let blob, ext;
+    let blob, ext, alphaNote='';
+    const wantAlpha=opts.transparent;
+    const useWebmAlpha=wantAlpha&&opts.format!=='mp4'&&await webmAlphaSupported(layout.w,layout.h);
+    if(wantAlpha&&!useWebmAlpha) alphaNote=opts.format==='mp4'
+      ?' · MP4 has no alpha, flattened to matte'
+      :' · alpha WebM unsupported here, flattened to matte';
+    function paintBg(){
+      if(wantAlpha&&useWebmAlpha){ ctx.clearRect(0,0,layout.w,layout.h); }
+      else if(wantAlpha){ ctx.fillStyle=opts.matte; ctx.fillRect(0,0,layout.w,layout.h); }
+      else { ctx.fillStyle=layout.bg; ctx.fillRect(0,0,layout.w,layout.h); }
+    }
 
     if(opts.format==='mp4'){
       // ── MP4 path: stream frames directly into VideoEncoder (no frame buffering)
@@ -1200,7 +1389,7 @@ async function renderLayout(){
       for(let fi=0;fi<totalFrames;fi++){
         if(encErr) throw encErr;
         const timeMs=fi*frameMs;
-        ctx.fillStyle=layout.bg; ctx.fillRect(0,0,layout.w,layout.h);
+        paintBg();
         for(const item of layout.items){
           const f=getFrameAtTime(item,timeMs);
           if(f) ctx.drawImage(getFrameCanvas(item,f.idx),item.x,item.y,item.w,item.h);
@@ -1215,6 +1404,36 @@ async function renderLayout(){
       if(encErr) throw encErr;
       muxer.finalize();
       blob=new Blob([target.buffer],{type:'video/mp4'}); ext='.mp4';
+    } else if(useWebmAlpha){
+      // ── WebM path w/ alpha: WebCodecs VP9 + webm-muxer
+      const {Muxer,ArrayBufferTarget}=await loadWebmMuxer();
+      const target=new ArrayBufferTarget();
+      const muxer=new Muxer({target,video:{codec:'V_VP9',width:layout.w,height:layout.h,alpha:true}});
+      let encErr=null;
+      const encoder=new VideoEncoder({
+        output:(chunk,meta)=>muxer.addVideoChunk(chunk,meta),
+        error:e=>{ encErr=e; }
+      });
+      encoder.configure({codec:'vp09.00.10.08',width:layout.w,height:layout.h,bitrate:12_000_000,alpha:'keep'});
+      let tsUs=0;
+      for(let fi=0;fi<totalFrames;fi++){
+        if(encErr) throw encErr;
+        const timeMs=fi*frameMs;
+        paintBg();
+        for(const item of layout.items){
+          const f=getFrameAtTime(item,timeMs);
+          if(f) ctx.drawImage(getFrameCanvas(item,f.idx),item.x,item.y,item.w,item.h);
+        }
+        const vf=new VideoFrame(masterCanvas,{timestamp:tsUs,duration:frameMs*1000,alpha:'keep'});
+        encoder.encode(vf,{keyFrame:fi%30===0}); vf.close();
+        tsUs+=frameMs*1000;
+        if(fi%20===0){ progress.textContent=`Encoding frame ${fi+1}/${totalFrames}…`; await tick(); }
+        if(encoder.encodeQueueSize>10) await new Promise(r=>setTimeout(r,0));
+      }
+      await encoder.flush(); encoder.close();
+      if(encErr) throw encErr;
+      muxer.finalize();
+      blob=new Blob([target.buffer],{type:'video/webm'}); ext='.webm';
     } else {
       // ── WebM path: MediaRecorder streaming
       const mimeType=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/webm;codecs=vp9':'video/webm';
@@ -1231,7 +1450,7 @@ async function renderLayout(){
         function nextFrame(){
           if(frameIdx>=totalFrames){ recorder.stop(); return; }
           const timeMs=frameIdx*frameMs;
-          ctx.fillStyle=layout.bg; ctx.fillRect(0,0,layout.w,layout.h);
+          paintBg();
           for(const item of layout.items){
             const fi=getFrameAtTime(item,timeMs);
             if(fi) ctx.drawImage(getFrameCanvas(item,fi.idx),item.x,item.y,item.w,item.h);
@@ -1249,7 +1468,7 @@ async function renderLayout(){
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
     a.href=url; a.download='layout-render'+ext; a.click();
-    progress.textContent=`Done — ${(blob.size/1024/1024).toFixed(1)} MB`;
+    progress.textContent=`Done — ${(blob.size/1024/1024).toFixed(1)} MB${alphaNote}`;
     setTimeout(()=>{ progress.textContent=''; progress.style.display='none'; },3000);
   }catch(err){
     console.error(err);
